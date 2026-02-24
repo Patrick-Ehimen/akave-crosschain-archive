@@ -1,22 +1,25 @@
+version: "2"
+
 run:
   timeout: 5m
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes: github.com/Patrick-Ehimen/akave-crosschain-archive
 
 linters:
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
-    - gofmt
-    - goimports
     - misspell
     - unconvert
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/Patrick-Ehimen/akave-crosschain-archive
 
 issues:
   exclude-use-default: false
