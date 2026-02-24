@@ -1,0 +1,44 @@
+# CrossChain Archive Configuration
+# Environment variable overrides use CROSSCHAIN_ prefix
+# e.g. CROSSCHAIN_DATABASE_HOST=localhost
+
+database:
+  host: localhost
+  port: 5432
+  user: crosschain
+  password: crosschain
+  dbname: crosschain_archive
+  sslmode: disable
+  max_open_conns: 25
+  max_idle_conns: 5
+
+chains:
+  1:
+    name: ethereum
+    rpc_url: https://eth.llamarpc.com
+    confirmation_depth: 12
+    max_block_range: 1000
+    rate_limit: 10  # requests per second
+  42161:
+    name: arbitrum
+    rpc_url: https://arb1.arbitrum.io/rpc
+    confirmation_depth: 1
+    max_block_range: 2000
+    rate_limit: 20
+
+akave:
+  endpoint: o3-rc2.akave.xyz
+  access_key: ""      # Set via CROSSCHAIN_AKAVE_ACCESS_KEY
+  secret_key: ""      # Set via CROSSCHAIN_AKAVE_SECRET_KEY
+  bucket_name: crosschain-archive
+  use_ssl: true
+  region: akave-network
+
+indexer:
+  batch_size: 1000
+  poll_interval: 15s
+  archive_interval: 1h
+
+logging:
+  level: info
+  pretty: true  # Set to false for JSON output in production
