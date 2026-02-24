@@ -1,0 +1,1 @@
+Unified indexer & archival system for cross-chain bridge transactions (Wormhole, LayerZero, Axelar, CCIP) with PostgreSQL hot storage and Akave O3 Parquet archival
