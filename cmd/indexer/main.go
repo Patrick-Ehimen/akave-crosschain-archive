@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/chain"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
@@ -49,17 +50,12 @@ func main() {
 	defer dbpool.Close()
 	log.Info().Msg("Connected to PostgreSQL")
 
-	// 5. Connect to RPCs (Stub)
-	for id, chain := range cfg.Chains {
-		log.Info().
-			Uint64("chain_id", id).
-			Str("rpc_url", chain.RPCURL).
-			Uint64("confirmations", chain.ConfirmationDepth).
-			Msg("Connecting to chain RPC")
-
-		// TODO: Initialize ethclient.Dial(chain.RPCURL)
-		log.Info().Uint64("chain_id", id).Msg("Successfully connected to RPC. Current block height: stubbed")
+	// 5. Connect to RPCs
+	chainMgr, err := chain.NewManager(ctx, cfg.Chains, log)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to connect to chain RPCs")
 	}
+	defer chainMgr.Close()
 
 	// 6. Connect to O3 (Stub)
 	log.Info().
