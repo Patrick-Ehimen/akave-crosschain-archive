@@ -11,9 +11,9 @@ import (
 
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -35,15 +35,11 @@ func main() {
 
 	// 3. Connect to DB
 	ctx := context.Background()
-	dbpool, err := pgxpool.New(ctx, cfg.Database.DSN())
+	dbpool, err := postgres.NewPool(ctx, cfg.Database.DSN())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 	defer dbpool.Close()
-
-	if err := dbpool.Ping(ctx); err != nil {
-		log.Fatal().Err(err).Msg("Database ping failed")
-	}
 	log.Info().Msg("Connected to PostgreSQL")
 
 	// 4. Stub HTTP server with chi
