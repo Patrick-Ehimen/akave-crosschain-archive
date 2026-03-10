@@ -30,3 +30,4 @@ configs/config.local.yaml
 # Environment
 .env
 .env.local
+
