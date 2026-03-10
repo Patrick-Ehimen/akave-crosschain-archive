@@ -131,6 +131,23 @@ type LayerZeroDecoder struct {
 	parsedABI abi.ABI
 }
 
+type packetOrigin struct {
+	SrcEid uint32
+	Sender [32]byte
+	Nonce  uint64
+}
+
+type packetReceiveData struct {
+	Origin   packetOrigin
+	Receiver common.Address
+}
+
+type oftSentData struct {
+	DstEid           uint32
+	AmountSentLD     *big.Int
+	AmountReceivedLD *big.Int
+}
+
 func NewLayerZeroDecoder() *LayerZeroDecoder {
 	parsed, err := abi.JSON(strings.NewReader(lzABI))
 	if err != nil {
@@ -149,8 +166,7 @@ func (d *LayerZeroDecoder) ContractAddresses(chainID uint64) []common.Address {
 	if addr, ok := EndpointAddresses[chainID]; ok {
 		return []common.Address{addr}
 	}
-	// Fallback to the standard EVM V2 endpoint if not explicitly mapped
-	return []common.Address{common.HexToAddress("0x1a44076050125825900e736c501f859c50fE728c")}
+	return nil
 }
 
 func (d *LayerZeroDecoder) EventTopics() []common.Hash {
@@ -222,22 +238,24 @@ func (d *LayerZeroDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.Ra
 		if err != nil {
 			return nil, fmt.Errorf("failed to unpack PacketReceived: %v", err)
 		}
-
-		// Unpack origin struct and receiver
-		if len(unpacked) >= 2 {
-			originStruct := unpacked[0].(struct {
-				SrcEid uint32    `json:"srcEid"`
-				Sender [32]uint8 `json:"sender"`
-				Nonce  uint64    `json:"nonce"`
-			})
-			receiver := unpacked[1].(common.Address)
-
-			rawEvent.Data["src_eid"] = fmt.Sprintf("%d", originStruct.SrcEid)
-			rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", EndpointToChainID[originStruct.SrcEid])
-			rawEvent.Data["sender"] = common.BytesToAddress(originStruct.Sender[:]).Hex()
-			rawEvent.Data["nonce"] = fmt.Sprintf("%d", originStruct.Nonce)
-			rawEvent.Data["receiver"] = receiver.Hex()
+		if len(unpacked) < 2 {
+			return nil, fmt.Errorf("unexpected unpacked size for %s", eventName)
 		}
+
+		var received packetReceiveData
+		if err := event.Inputs.Copy(&received, unpacked); err != nil {
+			return nil, fmt.Errorf("failed to decode %s fields: %v", eventName, err)
+		}
+
+		rawEvent.Data["src_eid"] = fmt.Sprintf("%d", received.Origin.SrcEid)
+		if chainID, ok := EndpointToChainID[received.Origin.SrcEid]; ok {
+			rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", chainID)
+		} else {
+			rawEvent.Data["src_chain_id"] = "unknown"
+		}
+		rawEvent.Data["sender"] = common.BytesToAddress(received.Origin.Sender[:]).Hex()
+		rawEvent.Data["nonce"] = fmt.Sprintf("%d", received.Origin.Nonce)
+		rawEvent.Data["receiver"] = received.Receiver.Hex()
 
 	case "OFTSent":
 		// OFTSent has indexed arguments: guid, fromAddress
@@ -251,19 +269,26 @@ func (d *LayerZeroDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.Ra
 		if err != nil {
 			return nil, fmt.Errorf("failed to unpack OFTSent: %v", err)
 		}
-		if len(unpacked) >= 3 {
-			dstEid := unpacked[0].(uint32)
-			amountSentLD := unpacked[1].(*big.Int)
-			amountReceivedLD := unpacked[2].(*big.Int)
+		if len(unpacked) < 3 {
+			return nil, fmt.Errorf("unexpected unpacked size for OFTSent")
+		}
 
-			rawEvent.Data["dst_eid"] = fmt.Sprintf("%d", dstEid)
-			rawEvent.Data["dst_chain_id"] = fmt.Sprintf("%d", EndpointToChainID[dstEid])
-			if amountSentLD != nil {
-				rawEvent.Data["amount_sent"] = amountSentLD.String()
-			}
-			if amountReceivedLD != nil {
-				rawEvent.Data["amount_received"] = amountReceivedLD.String()
-			}
+		var sent oftSentData
+		if err := event.Inputs.NonIndexed().Copy(&sent, unpacked); err != nil {
+			return nil, fmt.Errorf("failed to decode OFTSent fields: %v", err)
+		}
+
+		rawEvent.Data["dst_eid"] = fmt.Sprintf("%d", sent.DstEid)
+		if chainID, ok := EndpointToChainID[sent.DstEid]; ok {
+			rawEvent.Data["dst_chain_id"] = fmt.Sprintf("%d", chainID)
+		} else {
+			rawEvent.Data["dst_chain_id"] = "unknown"
+		}
+		if sent.AmountSentLD != nil {
+			rawEvent.Data["amount_sent"] = sent.AmountSentLD.String()
+		}
+		if sent.AmountReceivedLD != nil {
+			rawEvent.Data["amount_received"] = sent.AmountReceivedLD.String()
 		}
 	}
 
