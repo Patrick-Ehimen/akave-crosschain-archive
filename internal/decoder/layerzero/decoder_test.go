@@ -10,6 +10,8 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 )
 
 func makeEncodedPayload(messageTail []byte) []byte {
@@ -47,10 +49,10 @@ func TestDecoderEventTopics(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedSet := map[common.Hash]struct{}{
-		parsedABI.Events["PacketSent"].ID:      {},
-		parsedABI.Events["PacketDelivered"].ID: {},
-		parsedABI.Events["PacketReceived"].ID:  {},
-		parsedABI.Events["OFTSent"].ID:         {},
+		parsedABI.Events[decoder.EventPacketSent].ID:      {},
+		parsedABI.Events[decoder.EventPacketDelivered].ID: {},
+		parsedABI.Events[decoder.EventPacketReceived].ID:  {},
+		parsedABI.Events[decoder.EventOFTSent].ID:         {},
 	}
 
 	require.Len(t, topics, len(expectedSet))
@@ -75,7 +77,7 @@ func TestDecodePacketSent(t *testing.T) {
 	parsedABI, err := abi.JSON(strings.NewReader(lzABI))
 	require.NoError(t, err)
 
-	packetSentEvent := parsedABI.Events["PacketSent"]
+	packetSentEvent := parsedABI.Events[decoder.EventPacketSent]
 	data, err := packetSentEvent.Inputs.Pack(payload, []byte("options"), sender)
 	require.NoError(t, err)
 
@@ -89,7 +91,7 @@ func TestDecodePacketSent(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rawEvent)
 
-	assert.Equal(t, "PacketSent", rawEvent.EventType)
+	assert.Equal(t, decoder.EventPacketSent, rawEvent.EventType)
 	assert.Equal(t, ProtocolName, rawEvent.Protocol)
 	assert.Equal(t, uint64(1), rawEvent.ChainID)
 
@@ -111,7 +113,7 @@ func TestDecodePacketDelivered(t *testing.T) {
 	parsedABI, err := abi.JSON(strings.NewReader(lzABI))
 	require.NoError(t, err)
 
-	packetDeliveredEvent := parsedABI.Events["PacketDelivered"]
+	packetDeliveredEvent := parsedABI.Events[decoder.EventPacketDelivered]
 
 	sender := common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
 	receiver := common.HexToAddress("0x2222222222222222222222222222222222222222")
@@ -138,7 +140,7 @@ func TestDecodePacketDelivered(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rawEvent)
 
-	assert.Equal(t, "PacketReceived", rawEvent.EventType)
+	assert.Equal(t, decoder.EventPacketReceived, rawEvent.EventType)
 	assert.Equal(t, "30101", rawEvent.Data["src_eid"])
 	assert.Equal(t, "1", rawEvent.Data["src_chain_id"])
 	assert.Equal(t, common.BytesToAddress(sender.Bytes()).Hex(), rawEvent.Data["sender"])
@@ -152,7 +154,7 @@ func TestDecodePacketReceived(t *testing.T) {
 	parsedABI, err := abi.JSON(strings.NewReader(lzABI))
 	require.NoError(t, err)
 
-	packetReceivedEvent := parsedABI.Events["PacketReceived"]
+	packetReceivedEvent := parsedABI.Events[decoder.EventPacketReceived]
 
 	sender := common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
 	receiver := common.HexToAddress("0x2222222222222222222222222222222222222222")
@@ -179,7 +181,7 @@ func TestDecodePacketReceived(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rawEvent)
 
-	assert.Equal(t, "PacketReceived", rawEvent.EventType)
+	assert.Equal(t, decoder.EventPacketReceived, rawEvent.EventType)
 	assert.Equal(t, "30101", rawEvent.Data["src_eid"])
 	assert.Equal(t, "1", rawEvent.Data["src_chain_id"])
 	assert.Equal(t, common.BytesToAddress(sender.Bytes()).Hex(), rawEvent.Data["sender"])
@@ -193,7 +195,7 @@ func TestDecodePacketReceived_UnknownEndpoint(t *testing.T) {
 	parsedABI, err := abi.JSON(strings.NewReader(lzABI))
 	require.NoError(t, err)
 
-	packetReceivedEvent := parsedABI.Events["PacketReceived"]
+	packetReceivedEvent := parsedABI.Events[decoder.EventPacketReceived]
 
 	sender := common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
 	receiver := common.HexToAddress("0x2222222222222222222222222222222222222222")
@@ -230,7 +232,7 @@ func TestDecodeOFTSent(t *testing.T) {
 	parsedABI, err := abi.JSON(strings.NewReader(lzABI))
 	require.NoError(t, err)
 
-	oftSentEvent := parsedABI.Events["OFTSent"]
+	oftSentEvent := parsedABI.Events[decoder.EventOFTSent]
 
 	guid := common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333")
 	fromAddress := common.HexToAddress("0x1111111111111111111111111111111111111111")
@@ -254,7 +256,7 @@ func TestDecodeOFTSent(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rawEvent)
 
-	assert.Equal(t, "OFTSent", rawEvent.EventType)
+	assert.Equal(t, decoder.EventOFTSent, rawEvent.EventType)
 	assert.Equal(t, guid.Hex(), rawEvent.Data["guid"])
 	assert.Equal(t, fromAddress.Hex(), rawEvent.Data["from_address"])
 	assert.Equal(t, "30102", rawEvent.Data["dst_eid"])
@@ -269,7 +271,7 @@ func TestDecodeOFTSent_UnknownEndpoint(t *testing.T) {
 	parsedABI, err := abi.JSON(strings.NewReader(lzABI))
 	require.NoError(t, err)
 
-	oftSentEvent := parsedABI.Events["OFTSent"]
+	oftSentEvent := parsedABI.Events[decoder.EventOFTSent]
 
 	guid := common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333")
 	fromAddress := common.HexToAddress("0x1111111111111111111111111111111111111111")

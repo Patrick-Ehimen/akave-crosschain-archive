@@ -184,10 +184,10 @@ func (d *LayerZeroDecoder) ContractAddresses(chainID uint64) []common.Address {
 
 func (d *LayerZeroDecoder) EventTopics() []common.Hash {
 	return []common.Hash{
-		d.parsedABI.Events["PacketSent"].ID,
-		d.parsedABI.Events["PacketDelivered"].ID,
-		d.parsedABI.Events["PacketReceived"].ID,
-		d.parsedABI.Events["OFTSent"].ID,
+		d.parsedABI.Events[decoder.EventPacketSent].ID,
+		d.parsedABI.Events[decoder.EventPacketDelivered].ID,
+		d.parsedABI.Events[decoder.EventPacketReceived].ID,
+		d.parsedABI.Events[decoder.EventOFTSent].ID,
 	}
 }
 
@@ -223,12 +223,12 @@ func (d *LayerZeroDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.Ra
 	}
 
 	// We treat PacketDelivered as PacketReceived to match the exact issue wording if necessary.
-	if rawEvent.EventType == "PacketDelivered" {
-		rawEvent.EventType = "PacketReceived"
+	if rawEvent.EventType == decoder.EventPacketDelivered {
+		rawEvent.EventType = decoder.EventPacketReceived
 	}
 
 	switch eventName {
-	case "PacketSent":
+	case decoder.EventPacketSent:
 		unpacked, err := event.Inputs.Unpack(log.Data)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unpack PacketSent: %v", err)
@@ -246,7 +246,7 @@ func (d *LayerZeroDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.Ra
 			return nil, fmt.Errorf("failed to decode encodedPayload: %v", err)
 		}
 
-	case "PacketDelivered", "PacketReceived":
+	case decoder.EventPacketDelivered, decoder.EventPacketReceived:
 		unpacked, err := event.Inputs.Unpack(log.Data)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unpack PacketReceived: %v", err)
@@ -270,7 +270,7 @@ func (d *LayerZeroDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.Ra
 		rawEvent.Data["nonce"] = fmt.Sprintf("%d", received.Origin.Nonce)
 		rawEvent.Data["receiver"] = received.Receiver.Hex()
 
-	case "OFTSent":
+	case decoder.EventOFTSent:
 		// OFTSent has indexed arguments: guid, fromAddress
 		// Unpack non-indexed: dstEid, amountSentLD, amountReceivedLD
 		if len(log.Topics) >= 3 {

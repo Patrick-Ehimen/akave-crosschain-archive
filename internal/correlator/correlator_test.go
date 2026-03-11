@@ -57,7 +57,7 @@ func TestCorrelator_PacketSent_CreatesPendingMessage(t *testing.T) {
 		TxHash:      "0xcorr_src",
 		LogIndex:    0,
 		Timestamp:   1700000000,
-		EventType:   "PacketSent",
+		EventType:   decoder.EventPacketSent,
 		Data: map[string]string{
 			"version":      "1",
 			"nonce":        "100",
@@ -105,7 +105,7 @@ func TestCorrelator_PacketReceivedCorrelatesWithSent(t *testing.T) {
 		TxHash:      "0xcorr_src2",
 		LogIndex:    0,
 		Timestamp:   1700000000,
-		EventType:   "PacketSent",
+		EventType:   decoder.EventPacketSent,
 		Data: map[string]string{
 			"version":      "1",
 			"nonce":        "200",
@@ -142,7 +142,7 @@ func TestCorrelator_PacketReceivedCorrelatesWithSent(t *testing.T) {
 		TxHash:      "0xcorr_dst2",
 		LogIndex:    1,
 		Timestamp:   1700000120,
-		EventType:   "PacketReceived",
+		EventType:   decoder.EventPacketReceived,
 		Data: map[string]string{
 			"src_eid":      "30101",
 			"src_chain_id": "1",
@@ -204,7 +204,7 @@ func TestCorrelator_PacketReceived_NoMatchingPending(t *testing.T) {
 		TxHash:      "0xorphan",
 		LogIndex:    0,
 		Timestamp:   1700000120,
-		EventType:   "PacketReceived",
+		EventType:   decoder.EventPacketReceived,
 		Data: map[string]string{
 			"src_eid":      "30101",
 			"src_chain_id": "1",
@@ -233,7 +233,7 @@ func TestCorrelator_OFTSent_CreatesPendingMessage(t *testing.T) {
 		TxHash:      "0xoft_corr",
 		LogIndex:    5,
 		Timestamp:   1700000200,
-		EventType:   "OFTSent",
+		EventType:   decoder.EventOFTSent,
 		Data: map[string]string{
 			"guid":            "0xcccc",
 			"from_address":    "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",

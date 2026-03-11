@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 )
 
 // ParquetEvent is the flattened structure serialized to Parquet/JSON lines for archival.
@@ -156,6 +158,10 @@ func ArchiveKey(protocol string, chainID uint64, t time.Time) string {
 	return fmt.Sprintf("protocols/%s/%d/%d-%02d.jsonl", protocol, chainID, t.Year(), t.Month())
 }
 
+func ManifestKey(protocol string) string {
+	return fmt.Sprintf("manifests/%s/index.json", protocol)
+}
+
 // ArchiveBatch serializes and uploads a batch of events to Akave O3.
 func (a *Archiver) ArchiveBatch(ctx context.Context, events []*decoder.RawEvent) error {
 	if len(events) == 0 {
@@ -169,6 +175,9 @@ func (a *Archiver) ArchiveBatch(ctx context.Context, events []*decoder.RawEvent)
 
 	existingData, err := a.o3.DownloadBytes(ctx, key)
 	if err != nil {
+		if !errors.Is(err, akave.ErrObjectNotFound) {
+			return fmt.Errorf("downloading existing archive %s: %w", key, err)
+		}
 		existingData = nil
 	}
 
@@ -209,12 +218,16 @@ func (a *Archiver) ArchiveBatch(ctx context.Context, events []*decoder.RawEvent)
 
 // UpdateManifest reads the current manifest, adds a new entry, and uploads it back.
 func (a *Archiver) UpdateManifest(ctx context.Context, protocol string, entry ManifestEntry) error {
-	manifestKey := "manifests/index.json"
+	manifestKey := ManifestKey(protocol)
 
 	// Try to read existing manifest.
 	var manifest Manifest
 	data, err := a.o3.DownloadBytes(ctx, manifestKey)
-	if err == nil && len(data) > 0 {
+	if err != nil {
+		if !errors.Is(err, akave.ErrObjectNotFound) {
+			return fmt.Errorf("downloading manifest %s: %w", manifestKey, err)
+		}
+	} else if len(data) > 0 {
 		if err := json.Unmarshal(data, &manifest); err != nil {
 			return fmt.Errorf("unmarshaling manifest: %w", err)
 		}

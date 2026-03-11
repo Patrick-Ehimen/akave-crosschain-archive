@@ -11,18 +11,21 @@ import (
 	"time"
 
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type mockArchiveStore struct {
-	objects map[string][]byte
+	objects      map[string][]byte
+	downloadErrs map[string]error
 }
 
 func newMockArchiveStore() *mockArchiveStore {
 	return &mockArchiveStore{
-		objects: make(map[string][]byte),
+		objects:      make(map[string][]byte),
+		downloadErrs: make(map[string]error),
 	}
 }
 
@@ -36,9 +39,12 @@ func (m *mockArchiveStore) Upload(_ context.Context, key string, reader io.Reade
 }
 
 func (m *mockArchiveStore) DownloadBytes(_ context.Context, key string) ([]byte, error) {
+	if err, ok := m.downloadErrs[key]; ok {
+		return nil, err
+	}
 	data, ok := m.objects[key]
 	if !ok {
-		return nil, fmt.Errorf("object not found: %s", key)
+		return nil, fmt.Errorf("%w: %s", akave.ErrObjectNotFound, key)
 	}
 	return bytes.Clone(data), nil
 }
@@ -51,7 +57,7 @@ func TestEventToParquet(t *testing.T) {
 		TxHash:      "0xabc",
 		LogIndex:    3,
 		Timestamp:   1700000000,
-		EventType:   "PacketSent",
+		EventType:   decoder.EventPacketSent,
 		Data: map[string]string{
 			"sender":       "0x1111",
 			"receiver":     "0x2222",
@@ -72,7 +78,7 @@ func TestEventToParquet(t *testing.T) {
 	assert.Equal(t, "0xabc", pe.TxHash)
 	assert.Equal(t, uint(3), pe.LogIndex)
 	assert.Equal(t, int64(1700000000), pe.Timestamp)
-	assert.Equal(t, "PacketSent", pe.EventType)
+	assert.Equal(t, decoder.EventPacketSent, pe.EventType)
 	assert.Equal(t, "0x1111", pe.Sender)
 	assert.Equal(t, "0x2222", pe.Receiver)
 	assert.Equal(t, "1", pe.SrcChainID)
@@ -92,7 +98,7 @@ func TestSerializeEvents(t *testing.T) {
 			TxHash:      "0xabc",
 			LogIndex:    0,
 			Timestamp:   1700000000,
-			EventType:   "PacketSent",
+			EventType:   decoder.EventPacketSent,
 			Data: map[string]string{
 				"sender": "0x1111",
 				"guid":   "0xguid1",
@@ -105,7 +111,7 @@ func TestSerializeEvents(t *testing.T) {
 			TxHash:      "0xdef",
 			LogIndex:    1,
 			Timestamp:   1700000012,
-			EventType:   "PacketSent",
+			EventType:   decoder.EventPacketSent,
 			Data: map[string]string{
 				"sender": "0x2222",
 				"guid":   "0xguid2",
@@ -179,7 +185,7 @@ func TestSerializeEvents_ValidJSON(t *testing.T) {
 		TxHash:      "0xabc",
 		LogIndex:    0,
 		Timestamp:   1700000000,
-		EventType:   "PacketSent",
+		EventType:   decoder.EventPacketSent,
 		Data:        map[string]string{},
 	}
 
@@ -206,7 +212,7 @@ func TestArchiveBatch_MergesExistingArchiveAndManifest(t *testing.T) {
 			TxHash:      "0xabc",
 			LogIndex:    0,
 			Timestamp:   1700000000,
-			EventType:   "PacketSent",
+			EventType:   decoder.EventPacketSent,
 			Data: map[string]string{
 				"guid": "0xguid1",
 			},
@@ -221,7 +227,7 @@ func TestArchiveBatch_MergesExistingArchiveAndManifest(t *testing.T) {
 			TxHash:      "0xabc",
 			LogIndex:    0,
 			Timestamp:   1700000000,
-			EventType:   "PacketSent",
+			EventType:   decoder.EventPacketSent,
 			Data: map[string]string{
 				"guid": "0xguid1",
 			},
@@ -233,7 +239,7 @@ func TestArchiveBatch_MergesExistingArchiveAndManifest(t *testing.T) {
 			TxHash:      "0xdef",
 			LogIndex:    1,
 			Timestamp:   1700000120,
-			EventType:   "PacketReceived",
+			EventType:   decoder.EventPacketReceived,
 			Data: map[string]string{
 				"guid": "0xguid2",
 			},
@@ -253,7 +259,7 @@ func TestArchiveBatch_MergesExistingArchiveAndManifest(t *testing.T) {
 	assert.Equal(t, "0xguid1", events[0].GUID)
 	assert.Equal(t, "0xguid2", events[1].GUID)
 
-	manifestData, err := store.DownloadBytes(ctx, "manifests/index.json")
+	manifestData, err := store.DownloadBytes(ctx, ManifestKey("layerzero_v2"))
 	require.NoError(t, err)
 
 	var manifest Manifest
@@ -263,4 +269,39 @@ func TestArchiveBatch_MergesExistingArchiveAndManifest(t *testing.T) {
 	assert.Equal(t, 2, manifest.Files[0].RowCount)
 	assert.Equal(t, int64(1700000000), manifest.Files[0].TimeRange.From)
 	assert.Equal(t, int64(1700000120), manifest.Files[0].TimeRange.To)
+}
+
+func TestArchiveBatch_ReturnsUnexpectedDownloadError(t *testing.T) {
+	store := newMockArchiveStore()
+	arch := New(store, zerolog.Nop())
+
+	key := ArchiveKey("layerzero_v2", 1, time.Unix(1700000000, 0).UTC())
+	store.downloadErrs[key] = fmt.Errorf("storage unavailable")
+
+	err := arch.ArchiveBatch(context.Background(), []*decoder.RawEvent{
+		{
+			Protocol:    "layerzero_v2",
+			ChainID:     1,
+			BlockNumber: 19000000,
+			TxHash:      "0xabc",
+			LogIndex:    0,
+			Timestamp:   1700000000,
+			EventType:   decoder.EventPacketSent,
+			Data:        map[string]string{"guid": "0xguid1"},
+		},
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "downloading existing archive")
+}
+
+func TestUpdateManifest_ReturnsUnexpectedDownloadError(t *testing.T) {
+	store := newMockArchiveStore()
+	arch := New(store, zerolog.Nop())
+
+	manifestKey := ManifestKey("layerzero_v2")
+	store.downloadErrs[manifestKey] = fmt.Errorf("storage unavailable")
+
+	err := arch.UpdateManifest(context.Background(), "layerzero_v2", ManifestEntry{Key: "protocols/layerzero_v2/1/2024-11.jsonl"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "downloading manifest")
 }

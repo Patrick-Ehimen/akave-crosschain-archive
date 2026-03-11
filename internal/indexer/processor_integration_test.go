@@ -23,6 +23,7 @@ import (
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/correlator"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/layerzero"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/types"
 )
@@ -136,7 +137,7 @@ func (m *memoryArchiveStore) Upload(_ context.Context, key string, reader io.Rea
 func (m *memoryArchiveStore) DownloadBytes(_ context.Context, key string) ([]byte, error) {
 	data, ok := m.objects[key]
 	if !ok {
-		return nil, fmt.Errorf("object not found: %s", key)
+		return nil, fmt.Errorf("%w: %s", akave.ErrObjectNotFound, key)
 	}
 	return bytes.Clone(data), nil
 }
@@ -179,7 +180,7 @@ func TestProcessChain_LayerZeroCorrelationArchiveAndCursorPersistence(t *testing
 	sourceArchiveKey := archiver.ArchiveKey(dec.Protocol(), 1, time.Unix(1700000000, 0).UTC())
 	sourceArchive := readArchivedEvents(t, archiveStore, sourceArchiveKey)
 	require.Len(t, sourceArchive, 1)
-	assert.Equal(t, "PacketSent", sourceArchive[0]["event_type"])
+	assert.Equal(t, decoder.EventPacketSent, sourceArchive[0]["event_type"])
 
 	destinationClient := &fakeChainClient{
 		latestBlock: 20,
@@ -205,9 +206,9 @@ func TestProcessChain_LayerZeroCorrelationArchiveAndCursorPersistence(t *testing
 	destinationArchiveKey := archiver.ArchiveKey(dec.Protocol(), 56, time.Unix(1700000120, 0).UTC())
 	destinationArchive := readArchivedEvents(t, archiveStore, destinationArchiveKey)
 	require.Len(t, destinationArchive, 1)
-	assert.Equal(t, "PacketReceived", destinationArchive[0]["event_type"])
+	assert.Equal(t, decoder.EventPacketReceived, destinationArchive[0]["event_type"])
 
-	manifestBytes, err := archiveStore.DownloadBytes(ctx, "manifests/index.json")
+	manifestBytes, err := archiveStore.DownloadBytes(ctx, archiver.ManifestKey(dec.Protocol()))
 	require.NoError(t, err)
 
 	var manifest archiver.Manifest
@@ -341,7 +342,7 @@ func buildPacketSentLog(t *testing.T, chainID uint64, blockNumber uint64, logInd
 	t.Helper()
 
 	parsedABI := parseLayerZeroTestABI(t)
-	event := parsedABI.Events["PacketSent"]
+	event := parsedABI.Events[decoder.EventPacketSent]
 	sender := common.HexToAddress("0x1111111111111111111111111111111111111111")
 	payload := makeEncodedPayload()
 
@@ -362,7 +363,7 @@ func buildPacketReceivedLog(t *testing.T, chainID uint64, blockNumber uint64, lo
 	t.Helper()
 
 	parsedABI := parseLayerZeroTestABI(t)
-	event := parsedABI.Events["PacketReceived"]
+	event := parsedABI.Events[decoder.EventPacketReceived]
 	receiver := common.HexToAddress("0x2222222222222222222222222222222222222222")
 	sender := common.HexToAddress("0x1111111111111111111111111111111111111111")
 

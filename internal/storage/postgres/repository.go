@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/types"
@@ -142,8 +144,11 @@ func (r *MessageRepository) GetMessage(ctx context.Context, messageID string) (*
 		&src.ChainID, &src.TxHash, &src.BlockNumber,
 		&src.Timestamp, &src.Sender, &src.LogIndex,
 	)
-	if err == nil {
+	switch {
+	case err == nil:
 		msg.Source = src
+	case !errors.Is(err, pgx.ErrNoRows):
+		return nil, fmt.Errorf("querying source for message %s: %w", messageID, err)
 	}
 
 	// Get destination
@@ -155,8 +160,11 @@ func (r *MessageRepository) GetMessage(ctx context.Context, messageID string) (*
 		&dst.ChainID, &dst.TxHash, &dst.BlockNumber,
 		&dst.Timestamp, &dst.Receiver, &dst.LogIndex,
 	)
-	if err == nil {
+	switch {
+	case err == nil:
 		msg.Destination = &dst
+	case !errors.Is(err, pgx.ErrNoRows):
+		return nil, fmt.Errorf("querying destination for message %s: %w", messageID, err)
 	}
 
 	// Get payload
@@ -167,8 +175,11 @@ func (r *MessageRepository) GetMessage(ctx context.Context, messageID string) (*
 	`, messageID).Scan(
 		&payload.Token, &payload.Amount, &payload.Data, &payload.Nonce,
 	)
-	if err == nil {
+	switch {
+	case err == nil:
 		msg.Payload = &payload
+	case !errors.Is(err, pgx.ErrNoRows):
+		return nil, fmt.Errorf("querying payload for message %s: %w", messageID, err)
 	}
 
 	// Get metadata
@@ -179,8 +190,11 @@ func (r *MessageRepository) GetMessage(ctx context.Context, messageID string) (*
 	`, messageID).Scan(
 		&meta.Fee, &meta.Relayer, &meta.GasUsed, &meta.LatencySeconds,
 	)
-	if err == nil {
+	switch {
+	case err == nil:
 		msg.Metadata = &meta
+	case !errors.Is(err, pgx.ErrNoRows):
+		return nil, fmt.Errorf("querying metadata for message %s: %w", messageID, err)
 	}
 
 	return msg, nil

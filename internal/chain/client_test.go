@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum"
@@ -197,6 +198,16 @@ func TestBlockTimestamp_RPCError(t *testing.T) {
 	_, err := c.BlockTimestamp(context.Background(), 123)
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestBlockTimestamp_HeaderNotFound(t *testing.T) {
+	mock := &mockEthClient{}
+	c := newTestClient(mock, 0, 1000)
+
+	_, err := c.BlockTimestamp(context.Background(), 123)
+	if err == nil || !strings.Contains(err.Error(), "header not found") {
+		t.Fatalf("expected header not found error, got %v", err)
 	}
 }
 

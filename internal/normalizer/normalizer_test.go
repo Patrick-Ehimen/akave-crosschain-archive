@@ -28,7 +28,7 @@ func TestNormalize_PacketSent(t *testing.T) {
 		TxHash:      "0xabc123",
 		LogIndex:    3,
 		Timestamp:   1700000000,
-		EventType:   "PacketSent",
+		EventType:   decoder.EventPacketSent,
 		Data: map[string]string{
 			"version":      "1",
 			"nonce":        "42",
@@ -80,7 +80,7 @@ func TestNormalize_PacketReceived(t *testing.T) {
 		TxHash:      "0xdef456",
 		LogIndex:    1,
 		Timestamp:   1700000120,
-		EventType:   "PacketReceived",
+		EventType:   decoder.EventPacketReceived,
 		Data: map[string]string{
 			"src_eid":      "30101",
 			"src_chain_id": "1",
@@ -122,7 +122,7 @@ func TestNormalize_OFTSent(t *testing.T) {
 		TxHash:      "0xoft789",
 		LogIndex:    5,
 		Timestamp:   1700000200,
-		EventType:   "OFTSent",
+		EventType:   decoder.EventOFTSent,
 		Data: map[string]string{
 			"guid":            "0x4444444444444444444444444444444444444444444444444444444444444444",
 			"from_address":    "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -181,7 +181,7 @@ func TestNormalize_PacketSent_UnknownDstChain(t *testing.T) {
 		Protocol:  "layerzero_v2",
 		ChainID:   1,
 		TxHash:    "0xabc",
-		EventType: "PacketSent",
+		EventType: decoder.EventPacketSent,
 		Data: map[string]string{
 			"nonce":        "1",
 			"src_eid":      "30101",
@@ -199,7 +199,42 @@ func TestNormalize_PacketSent_UnknownDstChain(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
-	// When dst_chain_id is "unknown", strconv.ParseUint returns 0
-	// so no destination should be set
+	// "unknown" is preserved as an explicit unmapped chain sentinel,
+	// so no destination should be set.
 	assert.Nil(t, msg.Destination)
+}
+
+func TestNormalize_PacketSent_InvalidNonce(t *testing.T) {
+	event := &decoder.RawEvent{
+		Protocol:  "layerzero_v2",
+		ChainID:   1,
+		EventType: decoder.EventPacketSent,
+		Data: map[string]string{
+			"nonce":        "not-a-number",
+			"dst_chain_id": "56",
+			"sender":       "0x1111111111111111111111111111111111111111",
+		},
+	}
+
+	_, err := Normalize(event)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "PacketSent nonce")
+}
+
+func TestNormalize_PacketReceived_InvalidSourceChain(t *testing.T) {
+	event := &decoder.RawEvent{
+		Protocol:  "layerzero_v2",
+		ChainID:   56,
+		EventType: decoder.EventPacketReceived,
+		Data: map[string]string{
+			"nonce":        "42",
+			"src_chain_id": "bad-chain-id",
+			"sender":       "0x1111111111111111111111111111111111111111",
+			"receiver":     "0x2222222222222222222222222222222222222222",
+		},
+	}
+
+	_, err := Normalize(event)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "PacketReceived source chain")
 }

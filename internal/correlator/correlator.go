@@ -2,8 +2,10 @@ package correlator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog"
 
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
@@ -37,9 +39,9 @@ func (c *Correlator) ProcessEvent(ctx context.Context, event *decoder.RawEvent) 
 	}
 
 	switch event.EventType {
-	case "PacketSent", "OFTSent":
+	case decoder.EventPacketSent, decoder.EventOFTSent:
 		return c.handleSourceEvent(ctx, event)
-	case "PacketReceived":
+	case decoder.EventPacketReceived:
 		return c.handleDestinationEvent(ctx, event)
 	default:
 		c.log.Warn().Str("event_type", event.EventType).Msg("Unhandled event type")
@@ -89,13 +91,22 @@ func (c *Correlator) handleDestinationEvent(ctx context.Context, event *decoder.
 
 	existing, err := c.repo.FindPendingByNonce(ctx, event.Protocol, srcChainID, sender, nonce)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.log.Warn().
+				Uint64("src_chain_id", srcChainID).
+				Str("sender", sender).
+				Uint64("nonce", nonce).
+				Msg("No matching pending message found for PacketReceived")
+			return nil // Not an error — the source event may not have been indexed yet
+		}
+
 		c.log.Warn().
 			Err(err).
 			Uint64("src_chain_id", srcChainID).
 			Str("sender", sender).
 			Uint64("nonce", nonce).
-			Msg("No matching pending message found for PacketReceived")
-		return nil // Not an error — the source event may not have been indexed yet
+			Msg("Failed to query pending message for PacketReceived")
+		return fmt.Errorf("finding pending message for source chain %d sender %s nonce %d: %w", srcChainID, sender, nonce, err)
 	}
 
 	// Compute latency if both timestamps are available.

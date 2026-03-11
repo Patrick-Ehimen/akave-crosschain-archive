@@ -21,11 +21,11 @@ func Normalize(event *decoder.RawEvent) (*types.Message, error) {
 	now := time.Now().UTC()
 
 	switch event.EventType {
-	case "PacketSent":
+	case decoder.EventPacketSent:
 		return normalizePacketSent(event, now)
-	case "PacketReceived":
+	case decoder.EventPacketReceived:
 		return normalizePacketReceived(event, now)
-	case "OFTSent":
+	case decoder.EventOFTSent:
 		return normalizeOFTSent(event, now)
 	default:
 		return nil, fmt.Errorf("unknown event type: %s", event.EventType)
@@ -45,8 +45,14 @@ func MessageID(event *decoder.RawEvent) string {
 func normalizePacketSent(event *decoder.RawEvent, now time.Time) (*types.Message, error) {
 	msgID := MessageID(event)
 
-	nonce, _ := strconv.ParseUint(event.Data["nonce"], 10, 64)
-	dstChainID, _ := strconv.ParseUint(event.Data["dst_chain_id"], 10, 64)
+	nonce, err := parseRequiredUint(event.Data, "nonce")
+	if err != nil {
+		return nil, fmt.Errorf("parsing PacketSent nonce: %w", err)
+	}
+	dstChainID, err := parseOptionalChainID(event.Data, "dst_chain_id")
+	if err != nil {
+		return nil, fmt.Errorf("parsing PacketSent destination chain: %w", err)
+	}
 
 	msg := &types.Message{
 		MessageID: msgID,
@@ -81,8 +87,14 @@ func normalizePacketSent(event *decoder.RawEvent, now time.Time) (*types.Message
 }
 
 func normalizePacketReceived(event *decoder.RawEvent, now time.Time) (*types.Message, error) {
-	nonce, _ := strconv.ParseUint(event.Data["nonce"], 10, 64)
-	srcChainID, _ := strconv.ParseUint(event.Data["src_chain_id"], 10, 64)
+	nonce, err := parseRequiredUint(event.Data, "nonce")
+	if err != nil {
+		return nil, fmt.Errorf("parsing PacketReceived nonce: %w", err)
+	}
+	srcChainID, err := parseOptionalChainID(event.Data, "src_chain_id")
+	if err != nil {
+		return nil, fmt.Errorf("parsing PacketReceived source chain: %w", err)
+	}
 
 	// For PacketReceived, we return a partial message that the correlator will use
 	// to update an existing pending message to executed.
@@ -114,7 +126,10 @@ func normalizePacketReceived(event *decoder.RawEvent, now time.Time) (*types.Mes
 func normalizeOFTSent(event *decoder.RawEvent, now time.Time) (*types.Message, error) {
 	msgID := MessageID(event)
 
-	dstChainID, _ := strconv.ParseUint(event.Data["dst_chain_id"], 10, 64)
+	dstChainID, err := parseOptionalChainID(event.Data, "dst_chain_id")
+	if err != nil {
+		return nil, fmt.Errorf("parsing OFTSent destination chain: %w", err)
+	}
 
 	msg := &types.Message{
 		MessageID: msgID,
@@ -143,4 +158,32 @@ func normalizeOFTSent(event *decoder.RawEvent, now time.Time) (*types.Message, e
 	}
 
 	return msg, nil
+}
+
+func parseRequiredUint(data map[string]string, field string) (uint64, error) {
+	value, ok := data[field]
+	if !ok || value == "" {
+		return 0, fmt.Errorf("missing %s", field)
+	}
+
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: %w", field, value, err)
+	}
+
+	return parsed, nil
+}
+
+func parseOptionalChainID(data map[string]string, field string) (uint64, error) {
+	value := data[field]
+	if value == "" || value == "unknown" {
+		return 0, nil
+	}
+
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: %w", field, value, err)
+	}
+
+	return parsed, nil
 }
