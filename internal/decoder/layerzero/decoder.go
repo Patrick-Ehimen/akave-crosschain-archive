@@ -15,10 +15,13 @@ import (
 )
 
 const (
+	// ProtocolName is the identifier for LayerZero V2 protocol in the decoder registry.
 	ProtocolName = "layerzero_v2"
 )
 
 // EndpointToChainID maps LayerZero V2 endpoint IDs to EVM chain IDs.
+// LayerZero uses its own endpoint ID system (30101, 30102, etc.) which must be
+// translated to standard EVM chain IDs (1 for Ethereum, 56 for BSC, etc.).
 var EndpointToChainID = map[uint32]uint64{
 	30101: 1,      // Ethereum
 	30102: 56,     // BSC
@@ -33,7 +36,9 @@ var EndpointToChainID = map[uint32]uint64{
 	30214: 534352, // Scroll
 }
 
-// EndpointAddresses maps EVM chain IDs to their specific LayerZero V2 Endpoint contract address.
+// EndpointAddresses maps EVM chain IDs to their LayerZero V2 Endpoint contract addresses.
+// These are the core endpoint contracts that emit PacketSent and PacketReceived events.
+// Most mainnets share the same canonical address, while testnets have a different one.
 var EndpointAddresses = map[uint64]common.Address{
 	// Mainnets
 	1:      common.HexToAddress("0x1a44076050125825900e736c501f859c50fE728c"), // Ethereum
@@ -56,6 +61,7 @@ var EndpointAddresses = map[uint64]common.Address{
 }
 
 // ChainIDToEndpoint maps EVM chain IDs to LayerZero V2 endpoint IDs.
+// This is the reverse mapping of EndpointToChainID, built automatically in init().
 var ChainIDToEndpoint = map[uint64]uint32{}
 
 func init() {
@@ -127,6 +133,9 @@ const lzABI = `[
 	}
 ]`
 
+// LayerZeroDecoder implements the Decoder interface for LayerZero V2 protocol events.
+// It handles PacketSent, PacketReceived/PacketDelivered, and OFTSent events emitted by
+// LayerZero V2 endpoint contracts and OFT token contracts.
 type LayerZeroDecoder struct {
 	parsedABI abi.ABI
 }
@@ -148,9 +157,13 @@ type oftSentData struct {
 	AmountReceivedLD *big.Int
 }
 
+// NewLayerZeroDecoder creates a new LayerZero V2 protocol decoder.
+// It parses the embedded ABI definitions for PacketSent, PacketReceived, and OFTSent events.
 func NewLayerZeroDecoder() *LayerZeroDecoder {
 	parsed, err := abi.JSON(strings.NewReader(lzABI))
 	if err != nil {
+		// This should never fail since the ABI is embedded and validated at compile time.
+		// We panic here similar to regexp.MustCompile to indicate a programming error.
 		panic(fmt.Errorf("failed to parse LayerZero ABI: %v", err))
 	}
 	return &LayerZeroDecoder{
@@ -295,6 +308,19 @@ func (d *LayerZeroDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.Ra
 	return rawEvent, nil
 }
 
+// decodeEncodedPayload parses a LayerZero V2 packet payload from a PacketSent event.
+//
+// LayerZero V2 packet structure (minimum 113 bytes):
+//   - version      (1 byte,  offset 0)       - Protocol version
+//   - nonce        (8 bytes, offset 1-8)     - Monotonic sequence number
+//   - srcEid       (4 bytes, offset 9-12)    - Source endpoint ID
+//   - sender       (32 bytes, offset 13-44)  - Sender address (left-padded, last 20 bytes are address)
+//   - dstEid       (4 bytes, offset 45-48)   - Destination endpoint ID
+//   - receiver     (32 bytes, offset 49-80)  - Receiver address (left-padded, last 20 bytes are address)
+//   - guid         (32 bytes, offset 81-112) - Globally unique packet identifier
+//   - message      (variable, offset 113+)   - Application-specific payload (optional)
+//
+// Reference: LayerZero V2 MessagingStructs.sol
 func decodeEncodedPayload(payload []byte, data map[string]string) error {
 	if len(payload) < 113 {
 		return fmt.Errorf("payload too short, expected at least 113 bytes, got %d", len(payload))
@@ -314,7 +340,7 @@ func decodeEncodedPayload(payload []byte, data map[string]string) error {
 		data["src_chain_id"] = fmt.Sprintf("%d", chainID)
 	}
 
-	// sender (32 bytes) -> last 20 bytes usually address
+	// sender (32 bytes) -> last 20 bytes are the address
 	senderBytes := payload[13:45]
 	data["sender"] = common.BytesToAddress(senderBytes[12:]).Hex()
 
@@ -325,7 +351,7 @@ func decodeEncodedPayload(payload []byte, data map[string]string) error {
 		data["dst_chain_id"] = fmt.Sprintf("%d", chainID)
 	}
 
-	// receiver (32 bytes) -> last 20 bytes usually address
+	// receiver (32 bytes) -> last 20 bytes are the address
 	receiverBytes := payload[49:81]
 	data["receiver"] = common.BytesToAddress(receiverBytes[12:]).Hex()
 

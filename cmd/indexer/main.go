@@ -12,6 +12,7 @@ import (
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/layerzero"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
 )
 
@@ -67,12 +68,11 @@ func main() {
 	}
 	log.Info().Strs("protocols", registry.Protocols()).Msg("Decoder registry initialized")
 
-	// 7. Connect to O3 (Stub)
-	log.Info().
-		Str("endpoint", cfg.Akave.Endpoint).
-		Str("bucket", cfg.Akave.BucketName).
-		Msg("Connecting to Akave O3 storage")
-	// TODO: Initialize O3 client
+	// 7. Connect to Akave O3
+	_, err = akave.NewClient(ctx, cfg.Akave, log)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to connect to Akave O3 storage")
+	}
 
 	// 8. Stub indexing loop
 	log.Info().Msg("Starting indexing loop")
