@@ -3,6 +3,7 @@ package chain
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum"
@@ -18,6 +19,9 @@ type mockEthClient struct {
 	filterLogs     []types.Log
 	filterLogsErr  error
 	filterCalls    int
+	header         *types.Header
+	headerErr      error
+	headerCalls    int
 	closed         bool
 }
 
@@ -28,6 +32,11 @@ func (m *mockEthClient) BlockNumber(_ context.Context) (uint64, error) {
 func (m *mockEthClient) FilterLogs(_ context.Context, _ ethereum.FilterQuery) ([]types.Log, error) {
 	m.filterCalls++
 	return m.filterLogs, m.filterLogsErr
+}
+
+func (m *mockEthClient) HeaderByNumber(_ context.Context, _ *big.Int) (*types.Header, error) {
+	m.headerCalls++
+	return m.header, m.headerErr
 }
 
 func (m *mockEthClient) Close() {
@@ -160,6 +169,34 @@ func TestFetchLogs_ContextCancelled(t *testing.T) {
 	_, err := c.FetchLogs(ctx, 0, 100, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for cancelled context, got nil")
+	}
+}
+
+func TestBlockTimestamp(t *testing.T) {
+	mock := &mockEthClient{
+		header: &types.Header{Time: 1700000000},
+	}
+	c := newTestClient(mock, 0, 1000)
+
+	ts, err := c.BlockTimestamp(context.Background(), 123)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ts != 1700000000 {
+		t.Errorf("got timestamp %d, want %d", ts, int64(1700000000))
+	}
+	if mock.headerCalls != 1 {
+		t.Errorf("expected 1 HeaderByNumber call, got %d", mock.headerCalls)
+	}
+}
+
+func TestBlockTimestamp_RPCError(t *testing.T) {
+	mock := &mockEthClient{headerErr: fmt.Errorf("rpc error")}
+	c := newTestClient(mock, 0, 1000)
+
+	_, err := c.BlockTimestamp(context.Background(), 123)
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }
 

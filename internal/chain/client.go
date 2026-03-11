@@ -28,6 +28,7 @@ const (
 type EthClient interface {
 	BlockNumber(ctx context.Context) (uint64, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	Close()
 }
 
@@ -125,6 +126,29 @@ func (c *Client) LatestConfirmedBlock(ctx context.Context) (uint64, error) {
 		return 0, nil
 	}
 	return blockNum - c.confirmationDepth, nil
+}
+
+// BlockTimestamp returns the Unix timestamp for a specific block.
+func (c *Client) BlockTimestamp(ctx context.Context, blockNumber uint64) (int64, error) {
+	var header *types.Header
+
+	err := c.withRetry(ctx, func(ctx context.Context) error {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return fmt.Errorf("rate limiter: %w", err)
+		}
+
+		var err error
+		header, err = c.eth.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber))
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("fetching header for block %d: %w", blockNumber, err)
+	}
+	if header == nil {
+		return 0, fmt.Errorf("header not found for block %d", blockNumber)
+	}
+
+	return int64(header.Time), nil
 }
 
 // FetchLogs retrieves logs matching the given filter across a block range.

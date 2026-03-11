@@ -17,6 +17,14 @@ func TestPostgresCursorStore_LoadCursor_NotExists(t *testing.T) {
 	}
 	defer pool.Close()
 
+	err = postgres.RunMigrations(
+		"postgres://postgres:password@localhost:5432/crosschain_test?sslmode=disable",
+		"file://../../migrations",
+	)
+	if err != nil {
+		t.Skip("Skipping test: migrations failed:", err)
+	}
+
 	store := NewPostgresCursorStore(pool)
 
 	// Load cursor that doesn't exist
@@ -38,6 +46,14 @@ func TestPostgresCursorStore_UpdateAndLoad(t *testing.T) {
 		t.Skip("Skipping test: PostgreSQL not available:", err)
 	}
 	defer pool.Close()
+
+	err = postgres.RunMigrations(
+		"postgres://postgres:password@localhost:5432/crosschain_test?sslmode=disable",
+		"file://../../migrations",
+	)
+	if err != nil {
+		t.Skip("Skipping test: migrations failed:", err)
+	}
 
 	store := NewPostgresCursorStore(pool)
 
@@ -94,13 +110,21 @@ func TestPostgresCursorStore_MultipleChains(t *testing.T) {
 	}
 	defer pool.Close()
 
+	err = postgres.RunMigrations(
+		"postgres://postgres:password@localhost:5432/crosschain_test?sslmode=disable",
+		"file://../../migrations",
+	)
+	if err != nil {
+		t.Skip("Skipping test: migrations failed:", err)
+	}
+
 	store := NewPostgresCursorStore(pool)
 
 	// Set up test data
 	testCases := []struct {
-		chainID uint64
+		chainID  uint64
 		protocol string
-		block   uint64
+		block    uint64
 	}{
 		{1, "layerzero_v2", 19000100},
 		{42161, "layerzero_v2", 175000200},
