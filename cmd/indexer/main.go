@@ -11,6 +11,7 @@ import (
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/layerzero"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/indexer"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
@@ -74,9 +75,15 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to connect to Akave O3 storage")
 	}
 
-	// 8. Stub indexing loop
-	log.Info().Msg("Starting indexing loop")
+	// 8. Initialize cursor store
+	cursors := indexer.NewPostgresCursorStore(dbpool)
 
-	<-ctx.Done()
+	// 9. Create and start indexer service
+	idx := indexer.New(chainMgr, registry, cursors, dbpool, cfg.Indexer, log)
+
+	if err := idx.Start(ctx); err != nil && err != context.Canceled {
+		log.Error().Err(err).Msg("Indexer stopped with error")
+	}
+
 	log.Info().Msg("Shutting down CrossChain Archive Indexer cleanly")
 }
