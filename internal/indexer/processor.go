@@ -6,11 +6,32 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog"
 
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/chain"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/correlator"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 )
+
+type chainReader interface {
+	LatestConfirmedBlock(ctx context.Context) (uint64, error)
+	FetchLogs(ctx context.Context, fromBlock, toBlock uint64, addresses []common.Address, topics [][]common.Hash) ([]ethtypes.Log, error)
+	BlockTimestamp(ctx context.Context, blockNumber uint64) (int64, error)
+}
+
+// EventCallback is a function called for each decoded event during processing.
+// It is used to plug in correlation, archival, or any other event handling logic.
+type EventCallback func(ctx context.Context, event *decoder.RawEvent) error
+
+// BatchCallback runs after all events in a batch have been decoded and processed.
+type BatchCallback func(ctx context.Context, events []*decoder.RawEvent) error
+
+// ProcessorHooks allows callers to plug correlation and archival work into the indexing loop.
+type ProcessorHooks struct {
+	OnEvent    EventCallback
+	AfterBatch BatchCallback
+}
 
 // ProcessChain runs the indexing loop for a single chain and protocol combination.
 // It continuously fetches, decodes, and processes events from the specified chain.
@@ -24,6 +45,44 @@ func ProcessChain(
 	batchSize uint64,
 	pollInterval time.Duration,
 	log zerolog.Logger,
+) error {
+	return processChainInternal(ctx, chainID, protocol, dec, chainClient, cursors, batchSize, pollInterval, log, ProcessorHooks{})
+}
+
+// ProcessChainWithCorrelator runs the indexing loop with event correlation enabled.
+// Decoded events are passed through the correlator for normalization, DB storage,
+// and cross-chain message matching.
+func ProcessChainWithCorrelator(
+	ctx context.Context,
+	chainID uint64,
+	protocol string,
+	dec decoder.Decoder,
+	chainClient *chain.Client,
+	cursors CursorStore,
+	batchSize uint64,
+	pollInterval time.Duration,
+	log zerolog.Logger,
+	corr *correlator.Correlator,
+) error {
+	hooks := ProcessorHooks{}
+	if corr != nil {
+		hooks.OnEvent = corr.ProcessEvent
+	}
+	return processChainInternal(ctx, chainID, protocol, dec, chainClient, cursors, batchSize, pollInterval, log, hooks)
+}
+
+// processChainInternal is the shared implementation for both ProcessChain and ProcessChainWithCorrelator.
+func processChainInternal(
+	ctx context.Context,
+	chainID uint64,
+	protocol string,
+	dec decoder.Decoder,
+	chainClient chainReader,
+	cursors CursorStore,
+	batchSize uint64,
+	pollInterval time.Duration,
+	log zerolog.Logger,
+	hooks ProcessorHooks,
 ) error {
 	log = log.With().
 		Uint64("chain_id", chainID).
@@ -122,6 +181,10 @@ func ProcessChain(
 			Uint64("to", toBlock).
 			Msg("Fetched logs")
 
+		decodedEvents := make([]*decoder.RawEvent, 0, len(logs))
+		blockTimestamps := make(map[uint64]int64)
+		var batchErr error
+
 		// Process each log
 		for _, ethLog := range logs {
 			// Decode the log
@@ -135,14 +198,45 @@ func ProcessChain(
 				continue
 			}
 
-			// For now, just log the decoded event
-			// In Issue #16, this will be normalized and stored in the database
+			rawEvent.Timestamp, err = blockTimestamp(ctx, chainClient, ethLog.BlockNumber, blockTimestamps)
+			if err != nil {
+				batchErr = fmt.Errorf("loading block timestamp for block %d: %w", ethLog.BlockNumber, err)
+				break
+			}
+
 			log.Info().
 				Str("event_type", rawEvent.EventType).
 				Str("tx_hash", rawEvent.TxHash).
 				Uint("log_index", rawEvent.LogIndex).
 				Uint64("block_number", rawEvent.BlockNumber).
 				Msg("Decoded event")
+
+			decodedEvents = append(decodedEvents, rawEvent)
+
+			// If an event callback is registered, process through it
+			// (e.g., correlation, normalization, DB storage)
+			if hooks.OnEvent != nil {
+				if err := hooks.OnEvent(ctx, rawEvent); err != nil {
+					batchErr = fmt.Errorf("processing event %s %s: %w", rawEvent.EventType, rawEvent.TxHash, err)
+					break
+				}
+			}
+		}
+
+		if batchErr == nil && hooks.AfterBatch != nil && len(decodedEvents) > 0 {
+			if err := hooks.AfterBatch(ctx, decodedEvents); err != nil {
+				batchErr = fmt.Errorf("processing archived batch %d-%d: %w", fromBlock, toBlock, err)
+			}
+		}
+
+		if batchErr != nil {
+			log.Error().
+				Err(batchErr).
+				Uint64("from", fromBlock).
+				Uint64("to", toBlock).
+				Msg("Batch processing failed, retrying without advancing cursor")
+			time.Sleep(pollInterval)
+			continue
 		}
 
 		// Update cursor to end of batch
@@ -154,6 +248,20 @@ func ProcessChain(
 
 		log.Debug().Uint64("cursor", cursor).Msg("Updated cursor")
 	}
+}
+
+func blockTimestamp(ctx context.Context, chainClient chainReader, blockNumber uint64, cache map[uint64]int64) (int64, error) {
+	if timestamp, ok := cache[blockNumber]; ok {
+		return timestamp, nil
+	}
+
+	timestamp, err := chainClient.BlockTimestamp(ctx, blockNumber)
+	if err != nil {
+		return 0, err
+	}
+
+	cache[blockNumber] = timestamp
+	return timestamp, nil
 }
 
 // min returns the smaller of two uint64 values.

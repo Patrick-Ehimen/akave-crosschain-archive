@@ -119,6 +119,22 @@ func (c *Client) Download(ctx context.Context, key string) (*minio.Object, error
 	return obj, nil
 }
 
+// DownloadBytes retrieves the object at the given key and reads it fully into memory.
+func (c *Client) DownloadBytes(ctx context.Context, key string) ([]byte, error) {
+	obj, err := c.Download(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, fmt.Errorf("reading object %q: %w", key, err)
+	}
+
+	return data, nil
+}
+
 // List returns all objects matching the given prefix.
 func (c *Client) List(ctx context.Context, prefix string) ([]ObjectInfo, error) {
 	var objects []ObjectInfo
