@@ -10,6 +10,7 @@ import (
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/chain"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
 )
 
@@ -57,12 +58,11 @@ func main() {
 	}
 	defer chainMgr.Close()
 
-	// 6. Connect to O3 (Stub)
-	log.Info().
-		Str("endpoint", cfg.Akave.Endpoint).
-		Str("bucket", cfg.Akave.BucketName).
-		Msg("Connecting to Akave O3 storage")
-	// TODO: Initialize O3 client
+	// 6. Connect to Akave O3
+	_, err = akave.NewClient(ctx, cfg.Akave, log)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to connect to Akave O3 storage")
+	}
 
 	// 7. Stub indexing loop
 	log.Info().Msg("Starting indexing loop")
