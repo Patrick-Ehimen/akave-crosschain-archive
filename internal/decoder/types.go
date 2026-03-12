@@ -5,6 +5,13 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 )
 
+const (
+	EventPacketSent      = "PacketSent"
+	EventPacketDelivered = "PacketDelivered"
+	EventPacketReceived  = "PacketReceived"
+	EventOFTSent         = "OFTSent"
+)
+
 // RawEvent represents a decoded protocol-specific event before normalization.
 type RawEvent struct {
 	Protocol    string            `json:"protocol"`

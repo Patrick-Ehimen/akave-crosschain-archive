@@ -7,8 +7,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/archiver"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/chain"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/correlator"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/layerzero"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/indexer"
@@ -70,16 +72,19 @@ func main() {
 	log.Info().Strs("protocols", registry.Protocols()).Msg("Decoder registry initialized")
 
 	// 7. Connect to Akave O3
-	_, err = akave.NewClient(ctx, cfg.Akave, log)
+	o3, err := akave.NewClient(ctx, cfg.Akave, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to Akave O3 storage")
 	}
 
-	// 8. Initialize cursor store
+	// 8. Initialize storage-backed services
 	cursors := indexer.NewPostgresCursorStore(dbpool)
+	repo := postgres.NewMessageRepository(dbpool)
+	corr := correlator.New(repo, log)
+	arch := archiver.New(o3, log)
 
 	// 9. Create and start indexer service
-	idx := indexer.New(chainMgr, registry, cursors, dbpool, cfg.Indexer, log)
+	idx := indexer.New(chainMgr, registry, cursors, dbpool, cfg.Indexer, corr, arch, log)
 
 	if err := idx.Start(ctx); err != nil && err != context.Canceled {
 		log.Error().Err(err).Msg("Indexer stopped with error")

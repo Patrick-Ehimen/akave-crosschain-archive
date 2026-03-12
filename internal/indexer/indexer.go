@@ -8,8 +8,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/archiver"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/chain"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/correlator"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 )
 
@@ -22,6 +24,8 @@ type Indexer struct {
 	cursors  CursorStore
 	pool     *pgxpool.Pool
 	config   config.Indexer
+	corr     *correlator.Correlator
+	archiver *archiver.Archiver
 	log      zerolog.Logger
 }
 
@@ -32,6 +36,8 @@ func New(
 	cursors CursorStore,
 	pool *pgxpool.Pool,
 	cfg config.Indexer,
+	corr *correlator.Correlator,
+	archiver *archiver.Archiver,
 	log zerolog.Logger,
 ) *Indexer {
 	return &Indexer{
@@ -40,6 +46,8 @@ func New(
 		cursors:  cursors,
 		pool:     pool,
 		config:   cfg,
+		corr:     corr,
+		archiver: archiver,
 		log:      log.With().Str("component", "indexer").Logger(),
 	}
 }
@@ -97,7 +105,7 @@ func (idx *Indexer) Start(ctx context.Context) error {
 			go func(chainID uint64, protocol string, dec decoder.Decoder, client *chain.Client) {
 				defer wg.Done()
 
-				err := ProcessChain(
+				err := processChainInternal(
 					ctx,
 					chainID,
 					protocol,
@@ -107,6 +115,10 @@ func (idx *Indexer) Start(ctx context.Context) error {
 					uint64(idx.config.BatchSize),
 					idx.config.PollInterval,
 					idx.log,
+					ProcessorHooks{
+						OnEvent:    idx.onEvent,
+						AfterBatch: idx.afterBatch,
+					},
 				)
 
 				if err != nil && err != context.Canceled {
@@ -131,4 +143,20 @@ func (idx *Indexer) Start(ctx context.Context) error {
 
 	idx.log.Info().Msg("All processors stopped, indexer shutting down")
 	return nil
+}
+
+func (idx *Indexer) onEvent(ctx context.Context, event *decoder.RawEvent) error {
+	if idx.corr == nil {
+		return nil
+	}
+
+	return idx.corr.ProcessEvent(ctx, event)
+}
+
+func (idx *Indexer) afterBatch(ctx context.Context, events []*decoder.RawEvent) error {
+	if idx.archiver == nil || len(events) == 0 {
+		return nil
+	}
+
+	return idx.archiver.ArchiveBatch(ctx, events)
 }

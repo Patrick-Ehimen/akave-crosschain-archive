@@ -3,6 +3,7 @@ package akave
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -168,6 +169,18 @@ func TestDownload_RetryOnError(t *testing.T) {
 	}
 	if mock.getObjectCalls != maxRetries {
 		t.Errorf("expected %d GetObject calls, got %d", maxRetries, mock.getObjectCalls)
+	}
+}
+
+func TestDownload_NotFound(t *testing.T) {
+	mock := &mockMinioClient{
+		getObjectErr: minio.ErrorResponse{Code: "NoSuchKey"},
+	}
+	c := newTestClient(mock)
+
+	_, err := c.Download(context.Background(), "test/key")
+	if !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("expected ErrObjectNotFound, got %v", err)
 	}
 }
 

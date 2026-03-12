@@ -2,6 +2,7 @@ package akave
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -19,6 +20,8 @@ const (
 	baseBackoff   = 1 * time.Second
 	backoffFactor = 2
 )
+
+var ErrObjectNotFound = errors.New("object not found")
 
 // ObjectInfo holds metadata about a stored object.
 type ObjectInfo struct {
@@ -114,9 +117,25 @@ func (c *Client) Download(ctx context.Context, key string) (*minio.Object, error
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, wrapObjectError(key, "downloading", err)
 	}
 	return obj, nil
+}
+
+// DownloadBytes retrieves the object at the given key and reads it fully into memory.
+func (c *Client) DownloadBytes(ctx context.Context, key string) ([]byte, error) {
+	obj, err := c.Download(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, wrapObjectError(key, "reading", err)
+	}
+
+	return data, nil
 }
 
 // List returns all objects matching the given prefix.
@@ -145,6 +164,36 @@ func (c *Client) List(ctx context.Context, prefix string) ([]ObjectInfo, error) 
 // Delete removes the object at the given key.
 func (c *Client) Delete(ctx context.Context, key string) error {
 	return c.minio.RemoveObject(ctx, c.bucketName, key, minio.RemoveObjectOptions{})
+}
+
+func wrapObjectError(key, operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if isObjectNotFound(err) {
+		return fmt.Errorf("%w: %s", ErrObjectNotFound, key)
+	}
+	return fmt.Errorf("%s object %q: %w", operation, key, err)
+}
+
+func isObjectNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, ErrObjectNotFound) {
+		return true
+	}
+
+	var responseErr minio.ErrorResponse
+	if errors.As(err, &responseErr) {
+		switch responseErr.Code {
+		case "NoSuchKey", "NoSuchBucket", "NotFound":
+			return true
+		}
+	}
+
+	return false
 }
 
 // withRetry executes fn with exponential backoff retries.
