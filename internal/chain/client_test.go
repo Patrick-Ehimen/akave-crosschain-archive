@@ -3,6 +3,7 @@ package chain
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum"
@@ -18,6 +19,8 @@ type mockEthClient struct {
 	filterLogs     []types.Log
 	filterLogsErr  error
 	filterCalls    int
+	header         *types.Header
+	headerErr      error
 	closed         bool
 }
 
@@ -28,6 +31,10 @@ func (m *mockEthClient) BlockNumber(_ context.Context) (uint64, error) {
 func (m *mockEthClient) FilterLogs(_ context.Context, _ ethereum.FilterQuery) ([]types.Log, error) {
 	m.filterCalls++
 	return m.filterLogs, m.filterLogsErr
+}
+
+func (m *mockEthClient) HeaderByNumber(_ context.Context, _ *big.Int) (*types.Header, error) {
+	return m.header, m.headerErr
 }
 
 func (m *mockEthClient) Close() {
