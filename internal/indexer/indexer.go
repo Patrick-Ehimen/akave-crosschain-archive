@@ -8,22 +8,26 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/archiver"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/chain"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/correlator"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 )
 
 // Indexer orchestrates the indexing of cross-chain bridge events across multiple
 // chains and protocols. It spawns a processor goroutine for each (chain, protocol)
 // combination and manages their lifecycle.
 type Indexer struct {
-	chainMgr *chain.Manager
-	registry *decoder.Registry
-	cursors  CursorStore
-	pool     *pgxpool.Pool
-	config   config.Indexer
-	log      zerolog.Logger
+	chainMgr   *chain.Manager
+	registry   *decoder.Registry
+	cursors    CursorStore
+	pool       *pgxpool.Pool
+	o3         *akave.Client
+	chainNames map[uint64]string
+	config     config.Indexer
+	log        zerolog.Logger
 }
 
 // New creates a new Indexer instance with the provided dependencies.
@@ -32,16 +36,20 @@ func New(
 	registry *decoder.Registry,
 	cursors CursorStore,
 	pool *pgxpool.Pool,
+	o3 *akave.Client,
+	chainNames map[uint64]string,
 	cfg config.Indexer,
 	log zerolog.Logger,
 ) *Indexer {
 	return &Indexer{
-		chainMgr: chainMgr,
-		registry: registry,
-		cursors:  cursors,
-		pool:     pool,
-		config:   cfg,
-		log:      log.With().Str("component", "indexer").Logger(),
+		chainMgr:   chainMgr,
+		registry:   registry,
+		cursors:    cursors,
+		pool:       pool,
+		o3:         o3,
+		chainNames: chainNames,
+		config:     cfg,
+		log:        log.With().Str("component", "indexer").Logger(),
 	}
 }
 
@@ -130,6 +138,37 @@ func (idx *Indexer) Start(ctx context.Context) error {
 				Int("addresses", len(addresses)).
 				Msg("Started processor")
 		}
+	}
+
+	// Spawn archival goroutine if O3 client is configured and interval > 0
+	if idx.o3 != nil && idx.config.ArchiveInterval > 0 {
+		archiveStore := archiver.NewArchiveStore(idx.pool)
+
+		chainIDs := make([]uint64, 0, len(idx.chainMgr.AllClients()))
+		for chainID := range idx.chainMgr.AllClients() {
+			chainIDs = append(chainIDs, chainID)
+		}
+
+		arc := archiver.New(
+			archiveStore,
+			idx.o3,
+			idx.chainNames,
+			idx.registry.Protocols(),
+			chainIDs,
+			idx.log,
+		)
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := arc.Run(ctx, idx.config.ArchiveInterval); err != nil && err != context.Canceled {
+				idx.log.Error().Err(err).Msg("Archiver stopped with error")
+			}
+		}()
+
+		idx.log.Info().
+			Dur("interval", idx.config.ArchiveInterval).
+			Msg("Started archival goroutine")
 	}
 
 	// Wait for all processors to finish (on context cancellation)

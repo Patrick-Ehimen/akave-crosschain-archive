@@ -70,16 +70,22 @@ func main() {
 	log.Info().Strs("protocols", registry.Protocols()).Msg("Decoder registry initialized")
 
 	// 7. Connect to Akave O3
-	_, err = akave.NewClient(ctx, cfg.Akave, log)
+	o3Client, err := akave.NewClient(ctx, cfg.Akave, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to Akave O3 storage")
 	}
 
-	// 8. Initialize cursor store
+	// 8. Build chain name map from config
+	chainNames := make(map[uint64]string, len(cfg.Chains))
+	for chainID, chainCfg := range cfg.Chains {
+		chainNames[chainID] = chainCfg.Name
+	}
+
+	// 9. Initialize cursor store
 	cursors := indexer.NewPostgresCursorStore(dbpool)
 
-	// 9. Create and start indexer service
-	idx := indexer.New(chainMgr, registry, cursors, dbpool, cfg.Indexer, log)
+	// 10. Create and start indexer service
+	idx := indexer.New(chainMgr, registry, cursors, dbpool, o3Client, chainNames, cfg.Indexer, log)
 
 	if err := idx.Start(ctx); err != nil && err != context.Canceled {
 		log.Error().Err(err).Msg("Indexer stopped with error")
