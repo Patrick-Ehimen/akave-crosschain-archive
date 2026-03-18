@@ -10,6 +10,7 @@ import (
 
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/chain"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/correlator"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 )
 
@@ -61,6 +62,10 @@ func (idx *Indexer) Start(ctx context.Context) error {
 		Strs("protocols", idx.registry.Protocols()).
 		Msg("Decoders loaded")
 
+	// Create message store and correlator
+	messages := NewPostgresMessageStore(idx.pool)
+	corr := correlator.New(messages, idx.log)
+
 	// WaitGroup to track all processor goroutines
 	var wg sync.WaitGroup
 
@@ -104,6 +109,7 @@ func (idx *Indexer) Start(ctx context.Context) error {
 					dec,
 					client,
 					idx.cursors,
+					corr,
 					uint64(idx.config.BatchSize),
 					idx.config.PollInterval,
 					idx.log,

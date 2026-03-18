@@ -9,11 +9,12 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/chain"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/correlator"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 )
 
 // ProcessChain runs the indexing loop for a single chain and protocol combination.
-// It continuously fetches, decodes, and processes events from the specified chain.
+// It continuously fetches, decodes, normalizes, and correlates events from the specified chain.
 func ProcessChain(
 	ctx context.Context,
 	chainID uint64,
@@ -21,6 +22,7 @@ func ProcessChain(
 	dec decoder.Decoder,
 	chainClient *chain.Client,
 	cursors CursorStore,
+	corr *correlator.Correlator,
 	batchSize uint64,
 	pollInterval time.Duration,
 	log zerolog.Logger,
@@ -122,6 +124,9 @@ func ProcessChain(
 			Uint64("to", toBlock).
 			Msg("Fetched logs")
 
+		// Cache block timestamps to avoid redundant RPC calls within a batch
+		blockTimestamps := make(map[uint64]int64)
+
 		// Process each log
 		for _, ethLog := range logs {
 			// Decode the log
@@ -135,14 +140,34 @@ func ProcessChain(
 				continue
 			}
 
-			// For now, just log the decoded event
-			// In Issue #16, this will be normalized and stored in the database
+			// Enrich with block timestamp
+			if _, cached := blockTimestamps[rawEvent.BlockNumber]; !cached {
+				ts, err := chainClient.BlockTimestamp(ctx, rawEvent.BlockNumber)
+				if err != nil {
+					log.Warn().Err(err).Uint64("block", rawEvent.BlockNumber).Msg("Failed to get block timestamp")
+				} else {
+					blockTimestamps[rawEvent.BlockNumber] = ts
+				}
+			}
+			rawEvent.Timestamp = blockTimestamps[rawEvent.BlockNumber]
+
+			// Normalize and correlate the event
+			if err := corr.Process(ctx, rawEvent); err != nil {
+				log.Warn().
+					Err(err).
+					Str("event_type", rawEvent.EventType).
+					Str("tx_hash", rawEvent.TxHash).
+					Uint("log_index", rawEvent.LogIndex).
+					Msg("Failed to process event, skipping")
+				continue
+			}
+
 			log.Info().
 				Str("event_type", rawEvent.EventType).
 				Str("tx_hash", rawEvent.TxHash).
 				Uint("log_index", rawEvent.LogIndex).
 				Uint64("block_number", rawEvent.BlockNumber).
-				Msg("Decoded event")
+				Msg("Processed event")
 		}
 
 		// Update cursor to end of batch
