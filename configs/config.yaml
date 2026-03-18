@@ -27,7 +27,7 @@ chains:
     rate_limit: 20
 
 akave:
-  endpoint: o3-rc2.akave.xyz
+  endpoint: o3-rc3.akave.xyz
   access_key: ""      # Set via CROSSCHAIN_AKAVE_ACCESS_KEY
   secret_key: ""      # Set via CROSSCHAIN_AKAVE_SECRET_KEY
   bucket_name: crosschain-archive
