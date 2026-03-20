@@ -101,8 +101,8 @@ crosschain-archive/
 
 ## Milestones
 
-- [ ] **Milestone 1**: Project Scaffolding & Core Infrastructure ([#35](https://github.com/akave-ai/akave-pldg/issues/35))
-- [ ] **Milestone 2**: First Protocol Decoder — LayerZero V2 ([#36](https://github.com/akave-ai/akave-pldg/issues/36))
+- [x] **Milestone 1**: Project Scaffolding & Core Infrastructure ([#35](https://github.com/akave-ai/akave-pldg/issues/35))
+- [x] **Milestone 2**: First Protocol Decoder — LayerZero V2 ([#36](https://github.com/akave-ai/akave-pldg/issues/36))
 - [ ] **Milestone 3**: Multi-Protocol Expansion ([#37](https://github.com/akave-ai/akave-pldg/issues/37))
 - [ ] **Milestone 4**: REST API & Query Layer ([#38](https://github.com/akave-ai/akave-pldg/issues/38))
 - [ ] **Milestone 5**: Production Hardening & Documentation ([#39](https://github.com/akave-ai/akave-pldg/issues/39))
