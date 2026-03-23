@@ -10,6 +10,7 @@ import (
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/chain"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/axelar"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/layerzero"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/indexer"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
@@ -69,12 +70,15 @@ func main() {
 	if err := registry.Register(lzDecoder); err != nil {
 		log.Fatal().Err(err).Msg("Failed to register LayerZero decoder")
 	}
+	axelarDecoder := axelar.NewAxelarDecoder()
+	if err := registry.Register(axelarDecoder); err != nil {
+		log.Fatal().Err(err).Msg("Failed to register Axelar decoder")
+	}
 
 	whDecoder := wormhole.NewWormholeDecoder()
 	if err := registry.Register(whDecoder); err != nil {
-    	log.Fatal().Err(err).Msg("Failed to register Wormhole decoder")
+		log.Fatal().Err(err).Msg("Failed to register Wormhole decoder")
 	}
-
 	log.Info().Strs("protocols", registry.Protocols()).Msg("Decoder registry initialized")
 
 	// 7. Connect to Akave O3

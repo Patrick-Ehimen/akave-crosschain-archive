@@ -89,23 +89,43 @@ func (s *PostgresMessageStore) UpsertMessage(ctx context.Context, msg *types.Mes
 	return tx.Commit(ctx)
 }
 
-// FindByCorrelationKey looks up an existing pending message by composite key.
+// FindByCorrelationKey looks up an existing pending message.
+// If MessageID is set, looks up by (protocol, message_id).
+// Otherwise, uses the composite key (protocol, nonce, sender, src_chain_id).
 func (s *PostgresMessageStore) FindByCorrelationKey(ctx context.Context, key *normalizer.CorrelationKey) (*types.Message, error) {
-	row := s.pool.QueryRow(ctx, `
-		SELECT m.message_id, m.protocol, m.type, m.status, m.created_at, m.updated_at,
-		       s.chain_id, s.tx_hash, s.block_number, s.timestamp, s.sender, s.log_index,
-		       p.token, p.amount, p.data, p.nonce
-		FROM messages m
-		JOIN message_sources s ON m.message_id = s.message_id
-		JOIN message_payloads p ON m.message_id = p.message_id
-		WHERE m.protocol = $1
-		  AND p.nonce = $2
-		  AND s.sender = $3
-		  AND s.chain_id = $4
-		  AND m.status = 'pending'
-		LIMIT 1`,
-		key.Protocol, key.Nonce, key.Sender, key.SrcChainID,
-	)
+	var row pgx.Row
+
+	if key.MessageID != "" {
+		row = s.pool.QueryRow(ctx, `
+			SELECT m.message_id, m.protocol, m.type, m.status, m.created_at, m.updated_at,
+			       s.chain_id, s.tx_hash, s.block_number, s.timestamp, s.sender, s.log_index,
+			       p.token, p.amount, p.data, p.nonce
+			FROM messages m
+			JOIN message_sources s ON m.message_id = s.message_id
+			JOIN message_payloads p ON m.message_id = p.message_id
+			WHERE m.protocol = $1
+			  AND m.message_id = $2
+			  AND m.status = 'pending'
+			LIMIT 1`,
+			key.Protocol, key.MessageID,
+		)
+	} else {
+		row = s.pool.QueryRow(ctx, `
+			SELECT m.message_id, m.protocol, m.type, m.status, m.created_at, m.updated_at,
+			       s.chain_id, s.tx_hash, s.block_number, s.timestamp, s.sender, s.log_index,
+			       p.token, p.amount, p.data, p.nonce
+			FROM messages m
+			JOIN message_sources s ON m.message_id = s.message_id
+			JOIN message_payloads p ON m.message_id = p.message_id
+			WHERE m.protocol = $1
+			  AND p.nonce = $2
+			  AND s.sender = $3
+			  AND s.chain_id = $4
+			  AND m.status = 'pending'
+			LIMIT 1`,
+			key.Protocol, key.Nonce, key.Sender, key.SrcChainID,
+		)
+	}
 
 	msg := &types.Message{
 		Payload: &types.Payload{},

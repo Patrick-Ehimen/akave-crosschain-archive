@@ -99,7 +99,8 @@ const wormholeABI = `[
 // WormholeDecoder implements the decoder.Decoder interface for Wormhole protocol.
 // It handles LogMessagePublished (source) and TransferRedeemed (destination) events.
 type WormholeDecoder struct {
-	parsedABI abi.ABI
+	parsedABI     abi.ABI
+	eventsByTopic map[common.Hash]abi.Event
 }
 
 // NewWormholeDecoder creates and returns a new WormholeDecoder.
@@ -109,7 +110,16 @@ func NewWormholeDecoder() *WormholeDecoder {
 		// ABI is embedded and validated — panic signals a programming error.
 		panic(fmt.Errorf("failed to parse Wormhole ABI: %v", err))
 	}
-	return &WormholeDecoder{parsedABI: parsed}
+
+	eventsByTopic := make(map[common.Hash]abi.Event, len(parsed.Events))
+	for _, ev := range parsed.Events {
+		eventsByTopic[ev.ID] = ev
+	}
+
+	return &WormholeDecoder{
+		parsedABI:     parsed,
+		eventsByTopic: eventsByTopic,
+	}
 }
 
 // Protocol returns the protocol identifier.
@@ -145,6 +155,10 @@ func (d *WormholeDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.Raw
 	}
 
 	eventID := log.Topics[0]
+	event, ok := d.eventsByTopic[eventID]
+	if !ok {
+		return nil, fmt.Errorf("unknown event topic: %s", eventID.Hex())
+	}
 
 	rawEvent := &decoder.RawEvent{
 		Protocol:    ProtocolName,
@@ -155,13 +169,13 @@ func (d *WormholeDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.Raw
 		Data:        make(map[string]string),
 	}
 
-	switch eventID {
-	case d.parsedABI.Events["LogMessagePublished"].ID:
-		return d.decodeLogMessagePublished(log, rawEvent, chainID)
-	case d.parsedABI.Events["TransferRedeemed"].ID:
+	switch event.Name {
+	case "LogMessagePublished":
+		return d.decodeLogMessagePublished(log, event, rawEvent, chainID)
+	case "TransferRedeemed":
 		return d.decodeTransferRedeemed(log, rawEvent, chainID)
 	default:
-		return nil, fmt.Errorf("unknown event topic: %s", eventID.Hex())
+		return nil, fmt.Errorf("unknown event name: %s", event.Name)
 	}
 }
 
@@ -176,7 +190,7 @@ func (d *WormholeDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.Raw
 // emitterChain = the Wormhole chain ID of the source chain.
 // emitterAddress = the sender address (zero-padded to bytes32).
 // sequence = monotonically increasing per sender.
-func (d *WormholeDecoder) decodeLogMessagePublished(log ethtypes.Log, rawEvent *decoder.RawEvent, chainID uint64) (*decoder.RawEvent, error) {
+func (d *WormholeDecoder) decodeLogMessagePublished(log ethtypes.Log, event abi.Event, rawEvent *decoder.RawEvent, chainID uint64) (*decoder.RawEvent, error) {
 	rawEvent.EventType = "LogMessagePublished"
 
 	// sender is indexed — Topics[1]
@@ -189,7 +203,6 @@ func (d *WormholeDecoder) decodeLogMessagePublished(log ethtypes.Log, rawEvent *
 	rawEvent.Data["emitter_address"] = log.Topics[1].Hex()
 
 	// Unpack non-indexed fields from Data
-	event := d.parsedABI.Events["LogMessagePublished"]
 	unpacked, err := event.Inputs.Unpack(log.Data)
 	if err != nil {
 		return nil, fmt.Errorf("LogMessagePublished: failed to unpack: %w", err)

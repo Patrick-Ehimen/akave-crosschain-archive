@@ -252,6 +252,28 @@ func TestDecodeNoTopics(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestDecodeLogMessagePublished_MalformedData(t *testing.T) {
+	d := NewWormholeDecoder()
+
+	parsedABI, err := abi.JSON(strings.NewReader(wormholeABI))
+	require.NoError(t, err)
+
+	event := parsedABI.Events["LogMessagePublished"]
+	sender := common.HexToAddress("0x3ee18B2214AFF97000D974cf647E7C347E8fa585")
+
+	log := ethtypes.Log{
+		Topics: []common.Hash{
+			event.ID,
+			common.BytesToHash(sender.Bytes()),
+		},
+		Data: []byte{0x01, 0x02, 0x03}, // truncated, cannot be ABI-decoded
+	}
+
+	_, err = d.Decode(log, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to unpack")
+}
+
 func TestChainIDMapping_Roundtrip(t *testing.T) {
 	for whID, evmID := range WormholeChainIDToEVM {
 		gotWH, ok := EVMToWormholeChainID[evmID]
