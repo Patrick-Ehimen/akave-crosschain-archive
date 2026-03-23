@@ -15,6 +15,7 @@ import (
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/wormhole"
 )
 
 func main() {
@@ -63,10 +64,17 @@ func main() {
 
 	// 6. Init Decoder Registry
 	registry := decoder.NewRegistry()
+
 	lzDecoder := layerzero.NewLayerZeroDecoder()
 	if err := registry.Register(lzDecoder); err != nil {
 		log.Fatal().Err(err).Msg("Failed to register LayerZero decoder")
 	}
+
+	whDecoder := wormhole.NewWormholeDecoder()
+	if err := registry.Register(whDecoder); err != nil {
+    	log.Fatal().Err(err).Msg("Failed to register Wormhole decoder")
+	}
+
 	log.Info().Strs("protocols", registry.Protocols()).Msg("Decoder registry initialized")
 
 	// 7. Connect to Akave O3
