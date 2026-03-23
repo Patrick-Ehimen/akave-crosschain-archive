@@ -25,11 +25,12 @@ type Result struct {
 	CorrelationKey *CorrelationKey
 }
 
-// CorrelationKey contains the fields needed to find an existing pending message
-// for PacketReceived correlation. LayerZero PacketReceived events do not include
-// a GUID, so we match by (protocol, nonce, sender, src_chain_id).
+// CorrelationKey contains the fields needed to find an existing pending message.
+// For LayerZero PacketReceived: matches by (protocol, nonce, sender, src_chain_id).
+// For Axelar Executed: matches by (protocol, message_id) using the commandId.
 type CorrelationKey struct {
 	Protocol   string
+	MessageID  string // Direct message_id lookup (Axelar commandId, etc.)
 	Nonce      uint64
 	Sender     string
 	SrcChainID uint64
@@ -48,6 +49,12 @@ func Normalize(event *decoder.RawEvent) (*Result, error) {
 		return normalizePacketReceived(event)
 	case "OFTSent":
 		return normalizeOFTSent(event)
+	case "ContractCall":
+		return normalizeAxelarContractCall(event)
+	case "ContractCallApproved":
+		return normalizeAxelarContractCallApproved(event)
+	case "Executed":
+		return normalizeAxelarExecuted(event)
 	default:
 		return nil, fmt.Errorf("unsupported event type: %s", event.EventType)
 	}
@@ -162,6 +169,103 @@ func normalizeOFTSent(event *decoder.RawEvent) (*Result, error) {
 	}
 
 	return &Result{Message: msg}, nil
+}
+
+// normalizeAxelarContractCall creates a pending contract_call message from a ContractCall event.
+func normalizeAxelarContractCall(event *decoder.RawEvent) (*Result, error) {
+	payloadHash := event.Data["payload_hash"]
+	if payloadHash == "" {
+		return nil, fmt.Errorf("ContractCall missing payload_hash")
+	}
+
+	sender := event.Data["sender"]
+	if sender == "" {
+		return nil, fmt.Errorf("ContractCall missing sender")
+	}
+
+	now := time.Now()
+	msg := &types.Message{
+		MessageID: payloadHash,
+		Protocol:  event.Protocol,
+		Type:      types.TypeContractCall,
+		Status:    types.StatusPending,
+		Source: types.Source{
+			ChainID:     event.ChainID,
+			TxHash:      event.TxHash,
+			BlockNumber: event.BlockNumber,
+			Timestamp:   event.Timestamp,
+			Sender:      sender,
+			LogIndex:    event.LogIndex,
+		},
+		Payload: &types.Payload{
+			Data: event.Data["payload"],
+		},
+		Metadata:  &types.Metadata{},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	return &Result{Message: msg}, nil
+}
+
+// normalizeAxelarContractCallApproved creates a pending contract_call message
+// with commandId as the messageID.
+func normalizeAxelarContractCallApproved(event *decoder.RawEvent) (*Result, error) {
+	commandID := event.Data["command_id"]
+	if commandID == "" {
+		return nil, fmt.Errorf("ContractCallApproved missing command_id")
+	}
+
+	srcChainID, _ := parseUint64(event.Data["src_chain_id"])
+
+	now := time.Now()
+	msg := &types.Message{
+		MessageID: commandID,
+		Protocol:  event.Protocol,
+		Type:      types.TypeContractCall,
+		Status:    types.StatusPending,
+		Source: types.Source{
+			ChainID:     srcChainID,
+			TxHash:      event.Data["source_tx_hash"],
+			Sender:      event.Data["source_address"],
+			BlockNumber: event.BlockNumber,
+			Timestamp:   event.Timestamp,
+			LogIndex:    event.LogIndex,
+		},
+		Payload: &types.Payload{},
+		Metadata:  &types.Metadata{},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	return &Result{Message: msg}, nil
+}
+
+// normalizeAxelarExecuted creates a correlation result for matching via commandId.
+func normalizeAxelarExecuted(event *decoder.RawEvent) (*Result, error) {
+	commandID := event.Data["command_id"]
+	if commandID == "" {
+		return nil, fmt.Errorf("Executed missing command_id")
+	}
+
+	msg := &types.Message{
+		Destination: &types.Destination{
+			ChainID:     event.ChainID,
+			TxHash:      event.TxHash,
+			BlockNumber: event.BlockNumber,
+			Timestamp:   event.Timestamp,
+			LogIndex:    event.LogIndex,
+		},
+	}
+
+	return &Result{
+		Message:       msg,
+		IsCorrelation: true,
+		CorrelationKey: &CorrelationKey{
+			Protocol:  event.Protocol,
+			MessageID: commandID,
+		},
+	}, nil
 }
 
 func parseUint64(s string) (uint64, error) {
