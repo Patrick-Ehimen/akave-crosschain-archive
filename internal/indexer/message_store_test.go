@@ -1,25 +1,19 @@
 package indexer
 
 import (
-	"context"
-	"testing"
-	"time"
+    "context"
+    "testing"
+    "time"
 
-	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/normalizer"
-	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
-	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/types"
+    "github.com/Patrick-Ehimen/akave-crosschain-archive/internal/normalizer"
+    "github.com/Patrick-Ehimen/akave-crosschain-archive/internal/testhelper"
+    "github.com/Patrick-Ehimen/akave-crosschain-archive/internal/types"
 )
 
-const testDSN = "postgres://crosschain:crosschain@localhost:5432/crosschain_test?sslmode=disable"
 
 func newTestMessageStore(t *testing.T) *PostgresMessageStore {
 	t.Helper()
-	ctx := context.Background()
-	pool, err := postgres.NewPool(ctx, testDSN)
-	if err != nil {
-		t.Skip("Skipping test: PostgreSQL not available:", err)
-	}
-	t.Cleanup(func() { pool.Close() })
+	pool := testhelper.NewTestPool(t)
 	return NewPostgresMessageStore(pool)
 }
 
