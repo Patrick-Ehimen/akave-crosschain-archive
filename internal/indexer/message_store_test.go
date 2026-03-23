@@ -10,7 +10,7 @@ import (
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/types"
 )
 
-const testDSN = "postgres://postgres:password@localhost:5432/crosschain_test?sslmode=disable"
+const testDSN = "postgres://crosschain:crosschain@localhost:5432/crosschain_test?sslmode=disable"
 
 func newTestMessageStore(t *testing.T) *PostgresMessageStore {
 	t.Helper()
