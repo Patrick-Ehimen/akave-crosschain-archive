@@ -212,6 +212,34 @@ func (d *WormholeDecoder) decodeLogMessagePublished(log ethtypes.Log, rawEvent *
 
 	if len(parsed.Payload) > 0 {
 		rawEvent.Data["payload"] = fmt.Sprintf("0x%x", parsed.Payload)
+
+		// Attempt to decode the token bridge VAA payload for enriched fields.
+		// This is best-effort — if the payload is not a token transfer we skip silently.
+		transfer, err := ParseTokenBridgePayload(parsed.Payload)
+		if err != nil {
+			// Malformed payload — log as warning but don't fail decoding
+			rawEvent.Data["payload_parse_error"] = err.Error()
+		} else if transfer != nil {
+			// Enrich with decoded token transfer fields
+			rawEvent.Data["token_address"] = transfer.TokenAddress
+			rawEvent.Data["token_chain"] = fmt.Sprintf("%d", transfer.TokenChain)
+			if transfer.TokenChainEVM > 0 {
+				rawEvent.Data["token_chain_evm"] = fmt.Sprintf("%d", transfer.TokenChainEVM)
+			}
+			rawEvent.Data["to_address"] = transfer.ToAddress
+			rawEvent.Data["to_chain"] = fmt.Sprintf("%d", transfer.ToChain)
+			if transfer.ToChainEVM > 0 {
+				rawEvent.Data["to_chain_evm"] = fmt.Sprintf("%d", transfer.ToChainEVM)
+			}
+			rawEvent.Data["token_amount"] = transfer.Amount
+			if transfer.Fee != "" {
+				rawEvent.Data["relayer_fee"] = transfer.Fee
+			}
+			if len(transfer.ExtraPayload) > 0 {
+				rawEvent.Data["extra_payload"] = fmt.Sprintf("0x%x", transfer.ExtraPayload)
+			}
+			rawEvent.Data["payload_type"] = fmt.Sprintf("%d", transfer.PayloadType)
+		}
 	} else {
 		rawEvent.Data["payload"] = "0x"
 	}
