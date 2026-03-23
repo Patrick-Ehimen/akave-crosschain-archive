@@ -17,48 +17,31 @@ const (
 	ProtocolName = "axelar"
 )
 
-// ChainNameToID maps Axelar chain name strings to EVM chain IDs.
+// ChainNameToID maps Axelar chain name strings (lowercase) to EVM chain IDs.
 // Axelar uses human-readable chain names (e.g. "ethereum", "Avalanche") in its
-// GMP events, which must be translated to standard EVM chain IDs.
+// GMP events. Lookups use strings.ToLower() for case-insensitive matching.
 var ChainNameToID = map[string]uint64{
 	"ethereum":  1,
-	"Ethereum":  1,
 	"avalanche": 43114,
-	"Avalanche": 43114,
-	"Polygon":   137,
 	"polygon":   137,
 	"binance":   56,
-	"Binance":   56,
 	"arbitrum":  42161,
-	"Arbitrum":  42161,
 	"optimism":  10,
-	"Optimism":  10,
 	"base":      8453,
-	"Base":      8453,
-	"Fantom":    250,
 	"fantom":    250,
 	"linea":     59144,
-	"Linea":     59144,
-	"Moonbeam":  1284,
 	"moonbeam":  1284,
-	"Filecoin":  314,
 	"filecoin":  314,
-	"Mantle":    5000,
 	"mantle":    5000,
 	"scroll":    534352,
-	"Scroll":    534352,
 }
 
-// ChainIDToName maps EVM chain IDs to Axelar chain name strings.
-// Built automatically from ChainNameToID in init().
+// ChainIDToName maps EVM chain IDs to Axelar chain name strings (lowercase).
 var ChainIDToName = map[uint64]string{}
 
 func init() {
 	for name, id := range ChainNameToID {
-		// Use lowercase as canonical form.
-		if _, exists := ChainIDToName[id]; !exists {
-			ChainIDToName[id] = strings.ToLower(name)
-		}
+		ChainIDToName[id] = name
 	}
 }
 
@@ -116,7 +99,8 @@ const axelarABI = `[
 
 // AxelarDecoder implements the Decoder interface for Axelar GMP protocol events.
 type AxelarDecoder struct {
-	parsedABI abi.ABI
+	parsedABI     abi.ABI
+	eventsByTopic map[common.Hash]abi.Event
 }
 
 // NewAxelarDecoder creates a new Axelar GMP protocol decoder.
@@ -125,8 +109,15 @@ func NewAxelarDecoder() *AxelarDecoder {
 	if err != nil {
 		panic(fmt.Errorf("failed to parse Axelar ABI: %v", err))
 	}
+
+	eventsByTopic := make(map[common.Hash]abi.Event, len(parsed.Events))
+	for _, ev := range parsed.Events {
+		eventsByTopic[ev.ID] = ev
+	}
+
 	return &AxelarDecoder{
-		parsedABI: parsed,
+		parsedABI:     parsed,
+		eventsByTopic: eventsByTopic,
 	}
 }
 
@@ -155,20 +146,11 @@ func (d *AxelarDecoder) Decode(log ethtypes.Log, chainID uint64) (*decoder.RawEv
 	}
 
 	eventID := log.Topics[0]
-	var eventName string
-	var event abi.Event
-
-	for name, ev := range d.parsedABI.Events {
-		if ev.ID == eventID {
-			eventName = name
-			event = ev
-			break
-		}
-	}
-
-	if eventName == "" {
+	event, ok := d.eventsByTopic[eventID]
+	if !ok {
 		return nil, fmt.Errorf("unknown event topic: %s", eventID.Hex())
 	}
+	eventName := event.Name
 
 	rawEvent := &decoder.RawEvent{
 		Protocol:    ProtocolName,
@@ -222,7 +204,7 @@ func (d *AxelarDecoder) decodeContractCall(log ethtypes.Log, event abi.Event, ra
 	}
 	rawEvent.Data["destination_chain"] = destChain
 
-	if chainID, ok := ChainNameToID[destChain]; ok {
+	if chainID, ok := ChainNameToID[strings.ToLower(destChain)]; ok {
 		rawEvent.Data["dst_chain_id"] = fmt.Sprintf("%d", chainID)
 	} else {
 		rawEvent.Data["dst_chain_id"] = "unknown"
@@ -271,7 +253,7 @@ func (d *AxelarDecoder) decodeContractCallApproved(log ethtypes.Log, event abi.E
 	}
 	rawEvent.Data["source_chain"] = srcChain
 
-	if chainID, ok := ChainNameToID[srcChain]; ok {
+	if chainID, ok := ChainNameToID[strings.ToLower(srcChain)]; ok {
 		rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", chainID)
 	} else {
 		rawEvent.Data["src_chain_id"] = "unknown"

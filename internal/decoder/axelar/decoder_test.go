@@ -280,23 +280,15 @@ func TestDecode_UnknownTopic(t *testing.T) {
 }
 
 func TestChainNameMapping(t *testing.T) {
-	// Verify all major EVM chains have mappings.
+	// Verify all major EVM chains have lowercase mappings.
 	expectedChains := map[string]uint64{
 		"ethereum":  1,
-		"Ethereum":  1,
 		"avalanche": 43114,
-		"Avalanche": 43114,
-		"Polygon":   137,
 		"polygon":   137,
 		"binance":   56,
-		"Binance":   56,
 		"arbitrum":  42161,
-		"Arbitrum":  42161,
 		"optimism":  10,
-		"Optimism":  10,
 		"base":      8453,
-		"Base":      8453,
-		"Fantom":    250,
 		"fantom":    250,
 	}
 
@@ -304,6 +296,19 @@ func TestChainNameMapping(t *testing.T) {
 		id, ok := ChainNameToID[name]
 		assert.True(t, ok, "chain name %q should be mapped", name)
 		assert.Equal(t, expectedID, id, "chain name %q should map to %d", name, expectedID)
+	}
+
+	// Verify case-insensitive lookup works via strings.ToLower.
+	mixedCaseNames := map[string]uint64{
+		"Ethereum":  1,
+		"Avalanche": 43114,
+		"Polygon":   137,
+		"Base":      8453,
+	}
+	for name, expectedID := range mixedCaseNames {
+		id, ok := ChainNameToID[strings.ToLower(name)]
+		assert.True(t, ok, "chain name %q should resolve via ToLower", name)
+		assert.Equal(t, expectedID, id, "chain name %q should map to %d via ToLower", name, expectedID)
 	}
 
 	// Verify reverse mapping exists for all IDs.
