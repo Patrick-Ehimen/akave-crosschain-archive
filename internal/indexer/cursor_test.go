@@ -11,7 +11,7 @@ func TestPostgresCursorStore_LoadCursor_NotExists(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test database connection
-	pool, err := postgres.NewPool(ctx, "postgres://postgres:password@localhost:5432/crosschain_test?sslmode=disable")
+	pool, err := postgres.NewPool(ctx, "postgres://crosschain:crosschain@localhost:5432/crosschain_test?sslmode=disable")
 	if err != nil {
 		t.Skip("Skipping test: PostgreSQL not available:", err)
 	}
@@ -33,7 +33,7 @@ func TestPostgresCursorStore_LoadCursor_NotExists(t *testing.T) {
 func TestPostgresCursorStore_UpdateAndLoad(t *testing.T) {
 	ctx := context.Background()
 
-	pool, err := postgres.NewPool(ctx, "postgres://postgres:password@localhost:5432/crosschain_test?sslmode=disable")
+	pool, err := postgres.NewPool(ctx, "postgres://crosschain:crosschain@localhost:5432/crosschain_test?sslmode=disable")
 	if err != nil {
 		t.Skip("Skipping test: PostgreSQL not available:", err)
 	}
@@ -88,7 +88,7 @@ func TestPostgresCursorStore_UpdateAndLoad(t *testing.T) {
 func TestPostgresCursorStore_MultipleChains(t *testing.T) {
 	ctx := context.Background()
 
-	pool, err := postgres.NewPool(ctx, "postgres://postgres:password@localhost:5432/crosschain_test?sslmode=disable")
+	pool, err := postgres.NewPool(ctx, "postgres://crosschain:crosschain@localhost:5432/crosschain_test?sslmode=disable")
 	if err != nil {
 		t.Skip("Skipping test: PostgreSQL not available:", err)
 	}
