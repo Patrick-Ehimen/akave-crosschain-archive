@@ -55,6 +55,10 @@ func Normalize(event *decoder.RawEvent) (*Result, error) {
 		return normalizeAxelarContractCallApproved(event)
 	case "Executed":
 		return normalizeAxelarExecuted(event)
+	case "CCIPSendRequested":
+    	return normalizeCCIPSendRequested(event)
+	case "ExecutionStateChanged":
+    	return normalizeCCIPExecutionStateChanged(event)
 	case "LogMessagePublished":
 		return normalizeLogMessagePublished(event)
 	case "TransferRedeemed":
