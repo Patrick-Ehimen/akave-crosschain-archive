@@ -3,6 +3,7 @@ package ccip
 import (
 	"fmt"
 	"math/big"
+	"reflect"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -360,70 +361,92 @@ func (d *CCIPDecoder) decodeCCIPSendRequested(
 		return nil, fmt.Errorf("CCIPSendRequested: expected 1 argument, got %d", len(unpacked))
 	}
 
-	// go-ethereum decodes a single tuple parameter as map[string]interface{}.
-	// We extract each field by name from this map.
-	m, ok := unpacked[0].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("CCIPSendRequested: expected map[string]interface{}, got %T", unpacked[0])
+	// go-ethereum v1.17 returns an anonymous struct when unpacking a tuple.
+	// Use reflect to extract fields by name regardless of the concrete type.
+	v := reflect.ValueOf(unpacked[0])
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("CCIPSendRequested: expected struct, got %T", unpacked[0])
 	}
 
-	// messageId — bytes32 → hex string (the primary correlation key).
-	if v, ok := m["messageId"].([32]byte); ok {
-		rawEvent.Data["message_id"] = common.BytesToHash(v[:]).Hex()
+	getField := func(name string) reflect.Value {
+		return v.FieldByName(name)
+	}
+
+	// messageId — [32]byte → 0x-prefixed hex (the primary correlation key).
+	if f := getField("MessageId"); f.IsValid() {
+		if arr, ok := f.Interface().([32]byte); ok {
+			rawEvent.Data["message_id"] = common.BytesToHash(arr[:]).Hex()
+		}
 	}
 
 	// sequenceNumber — uint64.
-	if v, ok := m["sequenceNumber"].(uint64); ok {
-		rawEvent.Data["sequence_number"] = fmt.Sprintf("%d", v)
+	if f := getField("SequenceNumber"); f.IsValid() {
+		rawEvent.Data["sequence_number"] = fmt.Sprintf("%d", f.Uint())
 	}
 
-	// sender — address.
-	if v, ok := m["sender"].(common.Address); ok {
-		rawEvent.Data["sender"] = v.Hex()
+	// sender — common.Address.
+	if f := getField("Sender"); f.IsValid() {
+		addr, ok := f.Interface().(common.Address)
+		if ok {
+			rawEvent.Data["sender"] = addr.Hex()
+		}
 	}
 
-	// receiver — address.
-	if v, ok := m["receiver"].(common.Address); ok {
-		rawEvent.Data["receiver"] = v.Hex()
+	// receiver — common.Address.
+	if f := getField("Receiver"); f.IsValid() {
+		addr, ok := f.Interface().(common.Address)
+		if ok {
+			rawEvent.Data["receiver"] = addr.Hex()
+		}
 	}
 
 	// nonce — uint64.
-	if v, ok := m["nonce"].(uint64); ok {
-		rawEvent.Data["nonce"] = fmt.Sprintf("%d", v)
+	if f := getField("Nonce"); f.IsValid() {
+		rawEvent.Data["nonce"] = fmt.Sprintf("%d", f.Uint())
 	}
 
-	// sourceChainSelector — uint64. Map to EVM chain ID if known.
-	if v, ok := m["sourceChainSelector"].(uint64); ok {
-		rawEvent.Data["source_chain_selector"] = fmt.Sprintf("%d", v)
-		if evmID, ok := ChainSelectorToEVM[v]; ok {
+	// sourceChainSelector — uint64 → EVM chain ID lookup.
+	if f := getField("SourceChainSelector"); f.IsValid() {
+		sel := f.Uint()
+		rawEvent.Data["source_chain_selector"] = fmt.Sprintf("%d", sel)
+		if evmID, ok := ChainSelectorToEVM[sel]; ok {
 			rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", evmID)
 		} else {
-			// Fallback: use the chain the event was observed on.
 			rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", chainID)
 		}
 	} else {
 		rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", chainID)
 	}
 
-	// feeToken — address.
-	if v, ok := m["feeToken"].(common.Address); ok {
-		rawEvent.Data["fee_token"] = v.Hex()
+	// feeToken — common.Address.
+	if f := getField("FeeToken"); f.IsValid() {
+		if addr, ok := f.Interface().(common.Address); ok {
+			rawEvent.Data["fee_token"] = addr.Hex()
+		}
 	}
 
 	// feeTokenAmount — *big.Int.
-	if v, ok := m["feeTokenAmount"].(*big.Int); ok && v != nil {
-		rawEvent.Data["fee_token_amount"] = v.String()
+	if f := getField("FeeTokenAmount"); f.IsValid() && f.Kind() == reflect.Ptr && !f.IsNil() {
+		if bi, ok := f.Interface().(*big.Int); ok && bi != nil {
+			rawEvent.Data["fee_token_amount"] = bi.String()
+		}
 	}
 
 	// gasLimit — *big.Int.
-	if v, ok := m["gasLimit"].(*big.Int); ok && v != nil {
-		rawEvent.Data["gas_limit"] = v.String()
+	if f := getField("GasLimit"); f.IsValid() && f.Kind() == reflect.Ptr && !f.IsNil() {
+		if bi, ok := f.Interface().(*big.Int); ok && bi != nil {
+			rawEvent.Data["gas_limit"] = bi.String()
+		}
 	}
 
-	// data — []byte, stored as hex.
-	if v, ok := m["data"].([]byte); ok {
-		if len(v) > 0 {
-			rawEvent.Data["data"] = fmt.Sprintf("0x%x", v)
+	// data — []byte → 0x-prefixed hex.
+	if f := getField("Data"); f.IsValid() {
+		b, ok := f.Interface().([]byte)
+		if ok && len(b) > 0 {
+			rawEvent.Data["data"] = fmt.Sprintf("0x%x", b)
 		} else {
 			rawEvent.Data["data"] = "0x"
 		}
@@ -431,33 +454,27 @@ func (d *CCIPDecoder) decodeCCIPSendRequested(
 		rawEvent.Data["data"] = "0x"
 	}
 
-	// tokenAmounts — []struct{Token address; Amount *big.Int}.
-	// go-ethereum decodes tuple[] as []map[string]interface{}.
-	type tokenEntry struct {
-		token  common.Address
-		amount *big.Int
-	}
-	var tokens []tokenEntry
-	if raw, ok := m["tokenAmounts"].([]interface{}); ok {
-		for _, item := range raw {
-			if ta, ok := item.(map[string]interface{}); ok {
-				var te tokenEntry
-				if t, ok := ta["token"].(common.Address); ok {
-					te.token = t
+	// tokenAmounts — slice of structs with Token (address) and Amount (*big.Int).
+	if f := getField("TokenAmounts"); f.IsValid() && f.Kind() == reflect.Slice {
+		count := f.Len()
+		rawEvent.Data["token_count"] = fmt.Sprintf("%d", count)
+		if count > 0 {
+			first := f.Index(0)
+			if first.Kind() == reflect.Struct {
+				if tf := first.FieldByName("Token"); tf.IsValid() {
+					if addr, ok := tf.Interface().(common.Address); ok {
+						rawEvent.Data["token"] = addr.Hex()
+					}
 				}
-				if a, ok := ta["amount"].(*big.Int); ok {
-					te.amount = a
+				if af := first.FieldByName("Amount"); af.IsValid() && af.Kind() == reflect.Ptr && !af.IsNil() {
+					if bi, ok := af.Interface().(*big.Int); ok && bi != nil {
+						rawEvent.Data["amount"] = bi.String()
+					}
 				}
-				tokens = append(tokens, te)
 			}
 		}
-	}
-	rawEvent.Data["token_count"] = fmt.Sprintf("%d", len(tokens))
-	if len(tokens) > 0 {
-		rawEvent.Data["token"] = tokens[0].token.Hex()
-		if tokens[0].amount != nil {
-			rawEvent.Data["amount"] = tokens[0].amount.String()
-		}
+	} else {
+		rawEvent.Data["token_count"] = "0"
 	}
 
 	return rawEvent, nil
