@@ -357,6 +357,136 @@ func normalizeTransferRedeemed(event *decoder.RawEvent) (*Result, error) {
 	}, nil
 }
 
+// normalizeCCIPSendRequested creates a new pending message from a
+// CCIPSendRequested event emitted by a CCIP OnRamp contract.
+//
+// The messageId field is the globally unique CCIP message identifier and serves
+// as both the message_id stored in the messages table and the correlation key
+// used by ExecutionStateChanged. It is a bytes32 stored as a 0x-prefixed hex
+// string (e.g. "0xabcdef...").
+//
+// Token transfer vs. pure message classification:
+//   - If token_count > 0, the message type is TypeTokenTransfer.
+//   - Otherwise, the message type is TypeMessage.
+func normalizeCCIPSendRequested(event *decoder.RawEvent) (*Result, error) {
+	msgID := event.Data["message_id"]
+	if msgID == "" {
+		return nil, fmt.Errorf("CCIPSendRequested missing message_id")
+	}
+
+	sender := event.Data["sender"]
+	if sender == "" {
+		return nil, fmt.Errorf("CCIPSendRequested missing sender")
+	}
+
+	srcChainID, err := parseUint64(event.Data["src_chain_id"])
+	if err != nil {
+		return nil, fmt.Errorf("CCIPSendRequested invalid src_chain_id: %w", err)
+	}
+
+	nonce, err := parseUint64(event.Data["nonce"])
+	if err != nil {
+		return nil, fmt.Errorf("CCIPSendRequested invalid nonce: %w", err)
+	}
+
+	// Determine message type from token_count.
+	msgType := types.TypeMessage
+	if tc := event.Data["token_count"]; tc != "" && tc != "0" {
+		msgType = types.TypeTokenTransfer
+	}
+
+	now := time.Now()
+	msg := &types.Message{
+		MessageID: msgID,
+		Protocol:  event.Protocol,
+		Type:      msgType,
+		Status:    types.StatusPending,
+		Source: types.Source{
+			ChainID:     srcChainID,
+			TxHash:      event.TxHash,
+			BlockNumber: event.BlockNumber,
+			Timestamp:   event.Timestamp,
+			Sender:      sender,
+			LogIndex:    event.LogIndex,
+		},
+		Payload: &types.Payload{
+			Token:  event.Data["token"],
+			Amount: event.Data["amount"],
+			Data:   event.Data["data"],
+			Nonce:  nonce,
+		},
+		Metadata: &types.Metadata{
+			Fee: event.Data["fee_token_amount"],
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	return &Result{Message: msg}, nil
+}
+
+// normalizeCCIPExecutionStateChanged creates a correlation result from a
+// CCIPExecutionStateChanged event emitted by a CCIP OffRamp contract.
+//
+// CCIP's ExecutionStateChanged has three meaningful outcome states:
+//   - Success (2): the message was executed successfully → StatusExecuted
+//   - Failure (3): the message execution reverted → StatusFailed
+//   - Untouched / InProgress: not a terminal state; we skip these.
+//
+// messageId is used directly as the message_id correlation key (not nonce+sender),
+// because CCIP messageIds are globally unique and guaranteed unique per message.
+func normalizeCCIPExecutionStateChanged(event *decoder.RawEvent) (*Result, error) {
+	msgID := event.Data["message_id"]
+	if msgID == "" {
+		return nil, fmt.Errorf("ExecutionStateChanged missing message_id")
+	}
+
+	stateStr := event.Data["state"]
+	if stateStr == "" {
+		return nil, fmt.Errorf("ExecutionStateChanged missing state")
+	}
+
+	stateNum, err := parseUint64(stateStr)
+	if err != nil {
+		return nil, fmt.Errorf("ExecutionStateChanged invalid state: %w", err)
+	}
+
+	// Map CCIP execution state to our unified MessageStatus.
+	// Only Success (2) and Failure (3) are terminal states worth persisting.
+	// Untouched (0) and InProgress (1) are transient — skip them.
+	var status types.MessageStatus
+	switch stateNum {
+	case 2: // ExecutionStateSuccess
+		status = types.StatusExecuted
+	case 3: // ExecutionStateFailure
+		status = types.StatusFailed
+	default:
+		// Non-terminal state — the correlator will log a warning and skip.
+		// Return a correlation result with the key so the correlator can decide.
+		status = types.StatusPending
+	}
+
+	msg := &types.Message{
+		Status: status,
+		Destination: &types.Destination{
+			ChainID:     event.ChainID,
+			TxHash:      event.TxHash,
+			BlockNumber: event.BlockNumber,
+			Timestamp:   event.Timestamp,
+			LogIndex:    event.LogIndex,
+		},
+	}
+
+	return &Result{
+		Message:       msg,
+		IsCorrelation: true,
+		CorrelationKey: &CorrelationKey{
+			Protocol:  event.Protocol,
+			MessageID: msgID, // Direct message_id lookup — same as Axelar commandId pattern
+		},
+	}, nil
+}
+
 func parseUint64(s string) (uint64, error) {
 	if s == "" {
 		return 0, fmt.Errorf("empty string")
