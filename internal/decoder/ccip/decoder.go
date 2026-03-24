@@ -356,56 +356,107 @@ func (d *CCIPDecoder) decodeCCIPSendRequested(
 	if err != nil {
 		return nil, fmt.Errorf("CCIPSendRequested: failed to unpack: %w", err)
 	}
-
-	var msg evm2EVMMessage
-	if err := event.Inputs.Copy(&msg, unpacked); err != nil {
-		return nil, fmt.Errorf("CCIPSendRequested: failed to copy fields: %w", err)
+	if len(unpacked) < 1 {
+		return nil, fmt.Errorf("CCIPSendRequested: expected 1 argument, got %d", len(unpacked))
 	}
 
-	// messageId is the primary correlation key — store as hex string.
-	rawEvent.Data["message_id"] = common.BytesToHash(msg.MessageId[:]).Hex()
+	// go-ethereum decodes a single tuple parameter as map[string]interface{}.
+	// We extract each field by name from this map.
+	m, ok := unpacked[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("CCIPSendRequested: expected map[string]interface{}, got %T", unpacked[0])
+	}
 
-	rawEvent.Data["sequence_number"] = fmt.Sprintf("%d", msg.SequenceNumber)
-	rawEvent.Data["sender"] = msg.Sender.Hex()
-	rawEvent.Data["receiver"] = msg.Receiver.Hex()
-	rawEvent.Data["nonce"] = fmt.Sprintf("%d", msg.Nonce)
+	// messageId — bytes32 → hex string (the primary correlation key).
+	if v, ok := m["messageId"].([32]byte); ok {
+		rawEvent.Data["message_id"] = common.BytesToHash(v[:]).Hex()
+	}
 
-	// Source chain: the event is emitted on chainID, so sourceChainSelector
-	// should map back to chainID. We store both for completeness.
-	rawEvent.Data["source_chain_selector"] = fmt.Sprintf("%d", msg.SourceChainSelector)
-	if evmID, ok := ChainSelectorToEVM[msg.SourceChainSelector]; ok {
-		rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", evmID)
+	// sequenceNumber — uint64.
+	if v, ok := m["sequenceNumber"].(uint64); ok {
+		rawEvent.Data["sequence_number"] = fmt.Sprintf("%d", v)
+	}
+
+	// sender — address.
+	if v, ok := m["sender"].(common.Address); ok {
+		rawEvent.Data["sender"] = v.Hex()
+	}
+
+	// receiver — address.
+	if v, ok := m["receiver"].(common.Address); ok {
+		rawEvent.Data["receiver"] = v.Hex()
+	}
+
+	// nonce — uint64.
+	if v, ok := m["nonce"].(uint64); ok {
+		rawEvent.Data["nonce"] = fmt.Sprintf("%d", v)
+	}
+
+	// sourceChainSelector — uint64. Map to EVM chain ID if known.
+	if v, ok := m["sourceChainSelector"].(uint64); ok {
+		rawEvent.Data["source_chain_selector"] = fmt.Sprintf("%d", v)
+		if evmID, ok := ChainSelectorToEVM[v]; ok {
+			rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", evmID)
+		} else {
+			// Fallback: use the chain the event was observed on.
+			rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", chainID)
+		}
 	} else {
-		// Fallback: the chain the event was observed on is the source chain.
 		rawEvent.Data["src_chain_id"] = fmt.Sprintf("%d", chainID)
 	}
 
-	// Destination chain: stored in the selector but not directly in the event.
-	// The OnRamp contract is specific to a (source, destination) pair, so the
-	// destination is implicit in which OnRamp emitted the event.  We do not
-	// have it here; it will be known when ExecutionStateChanged is observed.
-	// Store the CCIP fee information.
-	rawEvent.Data["fee_token"] = msg.FeeToken.Hex()
-	if msg.FeeTokenAmount != nil {
-		rawEvent.Data["fee_token_amount"] = msg.FeeTokenAmount.String()
-	}
-	if msg.GasLimit != nil {
-		rawEvent.Data["gas_limit"] = msg.GasLimit.String()
+	// feeToken — address.
+	if v, ok := m["feeToken"].(common.Address); ok {
+		rawEvent.Data["fee_token"] = v.Hex()
 	}
 
-	// Application payload: store as hex.
-	if len(msg.Data) > 0 {
-		rawEvent.Data["data"] = fmt.Sprintf("0x%x", msg.Data)
+	// feeTokenAmount — *big.Int.
+	if v, ok := m["feeTokenAmount"].(*big.Int); ok && v != nil {
+		rawEvent.Data["fee_token_amount"] = v.String()
+	}
+
+	// gasLimit — *big.Int.
+	if v, ok := m["gasLimit"].(*big.Int); ok && v != nil {
+		rawEvent.Data["gas_limit"] = v.String()
+	}
+
+	// data — []byte, stored as hex.
+	if v, ok := m["data"].([]byte); ok {
+		if len(v) > 0 {
+			rawEvent.Data["data"] = fmt.Sprintf("0x%x", v)
+		} else {
+			rawEvent.Data["data"] = "0x"
+		}
 	} else {
 		rawEvent.Data["data"] = "0x"
 	}
 
-	// Token transfers: store count and first token/amount (most messages have 0-1).
-	rawEvent.Data["token_count"] = fmt.Sprintf("%d", len(msg.TokenAmounts))
-	if len(msg.TokenAmounts) > 0 {
-		rawEvent.Data["token"] = msg.TokenAmounts[0].Token.Hex()
-		if msg.TokenAmounts[0].Amount != nil {
-			rawEvent.Data["amount"] = msg.TokenAmounts[0].Amount.String()
+	// tokenAmounts — []struct{Token address; Amount *big.Int}.
+	// go-ethereum decodes tuple[] as []map[string]interface{}.
+	type tokenEntry struct {
+		token  common.Address
+		amount *big.Int
+	}
+	var tokens []tokenEntry
+	if raw, ok := m["tokenAmounts"].([]interface{}); ok {
+		for _, item := range raw {
+			if ta, ok := item.(map[string]interface{}); ok {
+				var te tokenEntry
+				if t, ok := ta["token"].(common.Address); ok {
+					te.token = t
+				}
+				if a, ok := ta["amount"].(*big.Int); ok {
+					te.amount = a
+				}
+				tokens = append(tokens, te)
+			}
+		}
+	}
+	rawEvent.Data["token_count"] = fmt.Sprintf("%d", len(tokens))
+	if len(tokens) > 0 {
+		rawEvent.Data["token"] = tokens[0].token.Hex()
+		if tokens[0].amount != nil {
+			rawEvent.Data["amount"] = tokens[0].amount.String()
 		}
 	}
 
