@@ -70,7 +70,6 @@ func newOFTSentEvent() *decoder.RawEvent {
 	}
 }
 
-
 func newLogMessagePublishedEvent() *decoder.RawEvent {
 	return &decoder.RawEvent{
 		Protocol:    "wormhole",
@@ -81,14 +80,14 @@ func newLogMessagePublishedEvent() *decoder.RawEvent {
 		Timestamp:   1706000000,
 		EventType:   "LogMessagePublished",
 		Data: map[string]string{
-			"sender":          "0x3ee18B2214AFF97000D974cf647E7C347E8fa585",
-			"emitter_address": "0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585",
-			"sequence":        "42",
-			"nonce":           "7",
+			"sender":            "0x3ee18B2214AFF97000D974cf647E7C347E8fa585",
+			"emitter_address":   "0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585",
+			"sequence":          "42",
+			"nonce":             "7",
 			"consistency_level": "15",
-			"payload":         "0xdeadbeef",
-			"emitter_chain":   "2",
-			"message_id":      "2/0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585/42",
+			"payload":           "0xdeadbeef",
+			"emitter_chain":     "2",
+			"message_id":        "2/0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585/42",
 		},
 	}
 }
@@ -810,7 +809,6 @@ func TestNormalizeTransferRedeemed_InvalidSequence(t *testing.T) {
 	}
 }
 
-
 // ─── CCIP normalizer test additions ──────────────────────────────────────
 
 // newCCIPSendRequestedEvent returns a sample CCIPSendRequested raw event
@@ -825,20 +823,20 @@ func newCCIPSendRequestedEvent() *decoder.RawEvent {
 		Timestamp:   1708000000,
 		EventType:   "CCIPSendRequested",
 		Data: map[string]string{
-			"message_id":           "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
-			"sequence_number":      "42",
-			"sender":               "0x1111111111111111111111111111111111111111",
-			"receiver":             "0x2222222222222222222222222222222222222222",
-			"nonce":                "7",
-			"src_chain_id":         "1",
+			"message_id":            "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+			"sequence_number":       "42",
+			"sender":                "0x1111111111111111111111111111111111111111",
+			"receiver":              "0x2222222222222222222222222222222222222222",
+			"nonce":                 "7",
+			"src_chain_id":          "1",
 			"source_chain_selector": "5009297550715157269",
-			"fee_token":            "0x3333333333333333333333333333333333333333",
-			"fee_token_amount":     "100000000000000",
-			"gas_limit":            "200000",
-			"data":                 "0x",
-			"token_count":          "1",
-			"token":                "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-			"amount":               "1000000000",
+			"fee_token":             "0x3333333333333333333333333333333333333333",
+			"fee_token_amount":      "100000000000000",
+			"gas_limit":             "200000",
+			"data":                  "0x",
+			"token_count":           "1",
+			"token":                 "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+			"amount":                "1000000000",
 		},
 	}
 }
@@ -854,18 +852,18 @@ func newCCIPMessageEvent() *decoder.RawEvent {
 		Timestamp:   1708000100,
 		EventType:   "CCIPSendRequested",
 		Data: map[string]string{
-			"message_id":           "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-			"sequence_number":      "1",
-			"sender":               "0x4444444444444444444444444444444444444444",
-			"receiver":             "0x5555555555555555555555555555555555555555",
-			"nonce":                "1",
-			"src_chain_id":         "42161",
+			"message_id":            "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+			"sequence_number":       "1",
+			"sender":                "0x4444444444444444444444444444444444444444",
+			"receiver":              "0x5555555555555555555555555555555555555555",
+			"nonce":                 "1",
+			"src_chain_id":          "42161",
 			"source_chain_selector": "4949039107694359620",
-			"fee_token":            "0x6666666666666666666666666666666666666666",
-			"fee_token_amount":     "50000000000000",
-			"gas_limit":            "150000",
-			"data":                 "0xdeadbeef",
-			"token_count":          "0",
+			"fee_token":             "0x6666666666666666666666666666666666666666",
+			"fee_token_amount":      "50000000000000",
+			"gas_limit":             "150000",
+			"data":                  "0xdeadbeef",
+			"token_count":           "0",
 		},
 	}
 }
@@ -1164,6 +1162,19 @@ func TestNormalizeCCIPExecutionStateChanged_InvalidState(t *testing.T) {
 	_, err := Normalize(event)
 	if err == nil {
 		t.Fatal("expected error for invalid state")
+	}
+}
+
+func TestNormalizeCCIPExecutionStateChanged_NonTerminalStateSkipped(t *testing.T) {
+	// States 0 (Untouched) and 1 (InProgress) are non-terminal and must be
+	// skipped to avoid the correlator accidentally updating messages.
+	for _, state := range []string{"0", "1"} {
+		event := newCCIPExecutionStateChangedEvent()
+		event.Data["state"] = state
+		_, err := Normalize(event)
+		if err == nil {
+			t.Errorf("expected error for non-terminal state %s, got nil", state)
+		}
 	}
 }
 

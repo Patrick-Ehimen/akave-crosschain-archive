@@ -12,33 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// buildEVM2EVMMessage constructs an ABI-encoded CCIPSendRequested log Data field
-// using the EVM2EVMMessage tuple defined in ccipABI.
-func buildCCIPSendRequestedData(t *testing.T, msg evm2EVMMessage) []byte {
-	t.Helper()
-
-	parsedABI, err := abi.JSON(strings.NewReader(ccipABI))
-	require.NoError(t, err)
-
-	event := parsedABI.Events["CCIPSendRequested"]
-
-	// Build the struct map that matches the ABI tuple layout.
-	// go-ethereum's abi package can encode tuples from Go structs via Copy/Pack.
-	// We use a map of field name → value to pack the tuple.
-	tokenAmounts := make([]struct {
-		Token  common.Address
-		Amount *big.Int
-	}, len(msg.TokenAmounts))
-	for i, ta := range msg.TokenAmounts {
-		tokenAmounts[i].Token = ta.Token
-		tokenAmounts[i].Amount = ta.Amount
-	}
-
-	packed, err := event.Inputs.Pack(msg)
-	require.NoError(t, err)
-	return packed
-}
-
 // newTestDecoder returns a CCIPDecoder for use in tests.
 func newTestDecoder() *CCIPDecoder {
 	return NewCCIPDecoder()
@@ -209,7 +182,7 @@ func TestDecodeCCIPSendRequested_WithTokenTransfer(t *testing.T) {
 	msgIDArr[31] = 0x42
 
 	tokenAddr := common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48") // USDC
-	tokenAmount := big.NewInt(1000_000000) // 1000 USDC
+	tokenAmount := big.NewInt(1000_000000)                                         // 1000 USDC
 
 	msg := evm2EVMMessage{
 		SequenceNumber:      1,

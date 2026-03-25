@@ -26,14 +26,14 @@ const (
 //
 // Reference: https://docs.chain.link/ccip/supported-networks
 var ChainSelectorToEVM = map[uint64]uint64{
-	5009297550715157269:  1,     // Ethereum Mainnet
-	4949039107694359620:  42161, // Arbitrum One
-	3734403246176062136:  10,    // Optimism
-	15971525489660198786: 8453,  // Base
-	4051577828743386545:  137,   // Polygon
-	6433500567565415381:  43114, // Avalanche C-Chain
-	11344663589394136015: 56,    // BNB Smart Chain
-	6101244977088475029:  59144, // Linea
+	5009297550715157269:  1,      // Ethereum Mainnet
+	4949039107694359620:  42161,  // Arbitrum One
+	3734403246176062136:  10,     // Optimism
+	15971525489660198786: 8453,   // Base
+	4051577828743386545:  137,    // Polygon
+	6433500567565415381:  43114,  // Avalanche C-Chain
+	11344663589394136015: 56,     // BNB Smart Chain
+	6101244977088475029:  59144,  // Linea
 	1346049177634351622:  534352, // Scroll
 	// Testnets
 	16015286601757825753: 11155111, // Ethereum Sepolia
@@ -71,7 +71,7 @@ var OnRampAddresses = map[uint64][]common.Address{
 		common.HexToAddress("0xCe11020D56e5FDbfE46D9FC3021641FfbBB5AdEE"), // → Ethereum
 		common.HexToAddress("0x67761742ac8A21Ec4D76CA18cbd701e5A6F3Bef3"), // → Optimism
 		common.HexToAddress("0x2a86b4f6c56aFb06a3b1D7fB7aE36c0c68Bd5d3E"), // → Polygon
-		common.HexToAddress("0x8096A61399e9e9C7e26F3cA5B73D7b2DbB1FeCC"), // → Base
+		common.HexToAddress("0x8096A61399e9e9C7e26F3cA5B73D7b2DbB1FeCC"),  // → Base
 	},
 	10: { // Optimism → various
 		common.HexToAddress("0x15F52286C0FF1d7A7dDbC9E300dd66628D46d4e6"), // → Ethereum
@@ -79,7 +79,7 @@ var OnRampAddresses = map[uint64][]common.Address{
 		common.HexToAddress("0xD1e12b64e77AcA0cde3E5a23f7Ef8b10Ff0f5a7D"), // → Base
 	},
 	8453: { // Base → various
-		common.HexToAddress("0x3E8CaD61Bc0C13f9cAbB5F59B4C8faBCdB7BDd0"), // → Ethereum
+		common.HexToAddress("0x3E8CaD61Bc0C13f9cAbB5F59B4C8faBCdB7BDd0"),  // → Ethereum
 		common.HexToAddress("0x6B90Ec3c44A5a50B5e9eB2Fd3d1b49D7c3A23BE4"), // → Arbitrum
 		common.HexToAddress("0x1CD7e2F39914a24e4561700cb3C4AD69B558bcDB"), // → Optimism
 	},
@@ -108,7 +108,7 @@ var OffRampAddresses = map[uint64][]common.Address{
 		common.HexToAddress("0x9E32088F3c1a5EB38D32d1Ec6ba0bCBF499DC9ac"), // ← Base
 	},
 	10: { // Optimism ← various
-		common.HexToAddress("0x33F54De59419570E33De8A4A3c6E5d5dFBc3Be6"), // ← Ethereum
+		common.HexToAddress("0x33F54De59419570E33De8A4A3c6E5d5dFBc3Be6"),  // ← Ethereum
 		common.HexToAddress("0xA0C1740154590c15B1f56Ed85E01B2E6e14E7dEF"), // ← Arbitrum
 		common.HexToAddress("0x1E2F8bCFb87F3D6aB77E30A2Ad7bB1DE8571af8E"), // ← Base
 	},
@@ -128,13 +128,15 @@ var OffRampAddresses = map[uint64][]common.Address{
 // ccipABI defines the ABI for the two CCIP events we index.
 //
 // CCIPSendRequested (OnRamp v1.2):
-//   The full EVM2EVMMessage struct is emitted as a single non-indexed parameter.
-//   We extract: messageId, sequenceNumber, sender, receiver, sourceChainSelector,
-//   nonce, feeToken, feeTokenAmount, gasLimit, data, tokenAmounts.
+//
+//	The full EVM2EVMMessage struct is emitted as a single non-indexed parameter.
+//	We extract: messageId, sequenceNumber, sender, receiver, sourceChainSelector,
+//	nonce, feeToken, feeTokenAmount, gasLimit, data, tokenAmounts.
 //
 // ExecutionStateChanged (OffRamp v1.2):
-//   sequenceNumber and messageId are both indexed, making them cheap to filter.
-//   state is the execution outcome (0=Untouched, 1=InProgress, 2=Success, 3=Failure).
+//
+//	sequenceNumber and messageId are both indexed, making them cheap to filter.
+//	state is the execution outcome (0=Untouched, 1=InProgress, 2=Success, 3=Failure).
 const ccipABI = `[
 	{
 		"anonymous": false,
@@ -492,10 +494,11 @@ func (d *CCIPDecoder) decodeCCIPSendRequested(
 // CCIPSendRequested event on the source chain.
 //
 // Execution states:
-//   0 = Untouched (message not yet attempted)
-//   1 = InProgress (execution currently in flight)
-//   2 = Success    (execution completed successfully)
-//   3 = Failure    (execution reverted or ran out of gas)
+//
+//	0 = Untouched (message not yet attempted)
+//	1 = InProgress (execution currently in flight)
+//	2 = Success    (execution completed successfully)
+//	3 = Failure    (execution reverted or ran out of gas)
 func (d *CCIPDecoder) decodeExecutionStateChanged(
 	log ethtypes.Log,
 	rawEvent *decoder.RawEvent,

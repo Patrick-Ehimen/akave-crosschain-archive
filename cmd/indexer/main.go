@@ -11,14 +11,13 @@ import (
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/axelar"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/ccip"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/layerzero"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/wormhole"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/indexer"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
-	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/wormhole"
-	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/ccip"
-
 )
 
 func main() {
@@ -84,7 +83,7 @@ func main() {
 
 	ccipDecoder := ccip.NewCCIPDecoder()
 	if err := registry.Register(ccipDecoder); err != nil {
-    	log.Fatal().Err(err).Msg("Failed to register CCIP decoder")
+		log.Fatal().Err(err).Msg("Failed to register CCIP decoder")
 	}
 
 	log.Info().Strs("protocols", registry.Protocols()).Msg("Decoder registry initialized")

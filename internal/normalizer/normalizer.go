@@ -56,9 +56,9 @@ func Normalize(event *decoder.RawEvent) (*Result, error) {
 	case "Executed":
 		return normalizeAxelarExecuted(event)
 	case "CCIPSendRequested":
-    	return normalizeCCIPSendRequested(event)
+		return normalizeCCIPSendRequested(event)
 	case "ExecutionStateChanged":
-    	return normalizeCCIPExecutionStateChanged(event)
+		return normalizeCCIPExecutionStateChanged(event)
 	case "LogMessagePublished":
 		return normalizeLogMessagePublished(event)
 	case "TransferRedeemed":
@@ -453,7 +453,8 @@ func normalizeCCIPExecutionStateChanged(event *decoder.RawEvent) (*Result, error
 
 	// Map CCIP execution state to our unified MessageStatus.
 	// Only Success (2) and Failure (3) are terminal states worth persisting.
-	// Untouched (0) and InProgress (1) are transient — skip them.
+	// Untouched (0) and InProgress (1) are transient — skip them entirely
+	// to avoid the correlator accidentally updating messages.
 	var status types.MessageStatus
 	switch stateNum {
 	case 2: // ExecutionStateSuccess
@@ -461,9 +462,7 @@ func normalizeCCIPExecutionStateChanged(event *decoder.RawEvent) (*Result, error
 	case 3: // ExecutionStateFailure
 		status = types.StatusFailed
 	default:
-		// Non-terminal state — the correlator will log a warning and skip.
-		// Return a correlation result with the key so the correlator can decide.
-		status = types.StatusPending
+		return nil, fmt.Errorf("ExecutionStateChanged non-terminal state %d, skipping", stateNum)
 	}
 
 	msg := &types.Message{
