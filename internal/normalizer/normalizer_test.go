@@ -70,7 +70,6 @@ func newOFTSentEvent() *decoder.RawEvent {
 	}
 }
 
-
 func newLogMessagePublishedEvent() *decoder.RawEvent {
 	return &decoder.RawEvent{
 		Protocol:    "wormhole",
@@ -81,14 +80,14 @@ func newLogMessagePublishedEvent() *decoder.RawEvent {
 		Timestamp:   1706000000,
 		EventType:   "LogMessagePublished",
 		Data: map[string]string{
-			"sender":          "0x3ee18B2214AFF97000D974cf647E7C347E8fa585",
-			"emitter_address": "0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585",
-			"sequence":        "42",
-			"nonce":           "7",
+			"sender":            "0x3ee18B2214AFF97000D974cf647E7C347E8fa585",
+			"emitter_address":   "0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585",
+			"sequence":          "42",
+			"nonce":             "7",
 			"consistency_level": "15",
-			"payload":         "0xdeadbeef",
-			"emitter_chain":   "2",
-			"message_id":      "2/0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585/42",
+			"payload":           "0xdeadbeef",
+			"emitter_chain":     "2",
+			"message_id":        "2/0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585/42",
 		},
 	}
 }
@@ -807,5 +806,410 @@ func TestNormalizeTransferRedeemed_InvalidSequence(t *testing.T) {
 	_, err := Normalize(event)
 	if err == nil {
 		t.Fatal("expected error for invalid sequence")
+	}
+}
+
+// ─── CCIP normalizer test additions ──────────────────────────────────────
+
+// newCCIPSendRequestedEvent returns a sample CCIPSendRequested raw event
+// representing a token transfer from Ethereum to Arbitrum.
+func newCCIPSendRequestedEvent() *decoder.RawEvent {
+	return &decoder.RawEvent{
+		Protocol:    "ccip",
+		ChainID:     1,
+		BlockNumber: 19500000,
+		TxHash:      "0xccip111aaa",
+		LogIndex:    5,
+		Timestamp:   1708000000,
+		EventType:   "CCIPSendRequested",
+		Data: map[string]string{
+			"message_id":            "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+			"sequence_number":       "42",
+			"sender":                "0x1111111111111111111111111111111111111111",
+			"receiver":              "0x2222222222222222222222222222222222222222",
+			"nonce":                 "7",
+			"src_chain_id":          "1",
+			"source_chain_selector": "5009297550715157269",
+			"fee_token":             "0x3333333333333333333333333333333333333333",
+			"fee_token_amount":      "100000000000000",
+			"gas_limit":             "200000",
+			"data":                  "0x",
+			"token_count":           "1",
+			"token":                 "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+			"amount":                "1000000000",
+		},
+	}
+}
+
+// newCCIPMessageEvent returns a CCIPSendRequested for a pure message (no tokens).
+func newCCIPMessageEvent() *decoder.RawEvent {
+	return &decoder.RawEvent{
+		Protocol:    "ccip",
+		ChainID:     42161,
+		BlockNumber: 200000000,
+		TxHash:      "0xccip222bbb",
+		LogIndex:    3,
+		Timestamp:   1708000100,
+		EventType:   "CCIPSendRequested",
+		Data: map[string]string{
+			"message_id":            "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+			"sequence_number":       "1",
+			"sender":                "0x4444444444444444444444444444444444444444",
+			"receiver":              "0x5555555555555555555555555555555555555555",
+			"nonce":                 "1",
+			"src_chain_id":          "42161",
+			"source_chain_selector": "4949039107694359620",
+			"fee_token":             "0x6666666666666666666666666666666666666666",
+			"fee_token_amount":      "50000000000000",
+			"gas_limit":             "150000",
+			"data":                  "0xdeadbeef",
+			"token_count":           "0",
+		},
+	}
+}
+
+// newCCIPExecutionStateChangedEvent returns a successful ExecutionStateChanged event.
+func newCCIPExecutionStateChangedEvent() *decoder.RawEvent {
+	return &decoder.RawEvent{
+		Protocol:    "ccip",
+		ChainID:     42161,
+		BlockNumber: 210000000,
+		TxHash:      "0xccip333ccc",
+		LogIndex:    2,
+		Timestamp:   1708000090,
+		EventType:   "ExecutionStateChanged",
+		Data: map[string]string{
+			"message_id":      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+			"sequence_number": "42",
+			"state":           "2",
+			"state_name":      "success",
+			"return_data":     "0x",
+		},
+	}
+}
+
+// newCCIPExecutionFailedEvent returns a failed ExecutionStateChanged event.
+func newCCIPExecutionFailedEvent() *decoder.RawEvent {
+	return &decoder.RawEvent{
+		Protocol:    "ccip",
+		ChainID:     8453,
+		BlockNumber: 5100000,
+		TxHash:      "0xccip444ddd",
+		LogIndex:    9,
+		Timestamp:   1708000200,
+		EventType:   "ExecutionStateChanged",
+		Data: map[string]string{
+			"message_id":      "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+			"sequence_number": "1",
+			"state":           "3",
+			"state_name":      "failure",
+			"return_data":     "0x08c379a0",
+		},
+	}
+}
+
+// ─── CCIPSendRequested normalizer tests ───────────────────────────────────
+
+func TestNormalizeCCIPSendRequested_TokenTransfer(t *testing.T) {
+	event := newCCIPSendRequestedEvent()
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.IsCorrelation {
+		t.Error("CCIPSendRequested should not be a correlation event")
+	}
+
+	msg := result.Message
+	if msg.MessageID != event.Data["message_id"] {
+		t.Errorf("expected message_id %s, got %s", event.Data["message_id"], msg.MessageID)
+	}
+	if msg.Protocol != "ccip" {
+		t.Errorf("expected protocol ccip, got %s", msg.Protocol)
+	}
+	if msg.Type != types.TypeTokenTransfer {
+		t.Errorf("expected type token_transfer (token_count=1), got %s", msg.Type)
+	}
+	if msg.Status != types.StatusPending {
+		t.Errorf("expected status pending, got %s", msg.Status)
+	}
+}
+
+func TestNormalizeCCIPSendRequested_PureMessage(t *testing.T) {
+	event := newCCIPMessageEvent()
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Message.Type != types.TypeMessage {
+		t.Errorf("expected type message (token_count=0), got %s", result.Message.Type)
+	}
+}
+
+func TestNormalizeCCIPSendRequested_SourceFields(t *testing.T) {
+	event := newCCIPSendRequestedEvent()
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	src := result.Message.Source
+	if src.ChainID != 1 {
+		t.Errorf("expected chain_id 1, got %d", src.ChainID)
+	}
+	if src.TxHash != "0xccip111aaa" {
+		t.Errorf("expected tx_hash, got %s", src.TxHash)
+	}
+	if src.Sender != "0x1111111111111111111111111111111111111111" {
+		t.Errorf("expected sender, got %s", src.Sender)
+	}
+	if src.LogIndex != 5 {
+		t.Errorf("expected log_index 5, got %d", src.LogIndex)
+	}
+	if src.Timestamp != 1708000000 {
+		t.Errorf("expected timestamp 1708000000, got %d", src.Timestamp)
+	}
+}
+
+func TestNormalizeCCIPSendRequested_PayloadFields(t *testing.T) {
+	event := newCCIPSendRequestedEvent()
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	payload := result.Message.Payload
+	if payload == nil {
+		t.Fatal("expected payload to be set")
+	}
+	if payload.Token != "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" {
+		t.Errorf("expected token USDC, got %s", payload.Token)
+	}
+	if payload.Amount != "1000000000" {
+		t.Errorf("expected amount 1000000000, got %s", payload.Amount)
+	}
+	if payload.Nonce != 7 {
+		t.Errorf("expected nonce 7, got %d", payload.Nonce)
+	}
+}
+
+func TestNormalizeCCIPSendRequested_MetadataFee(t *testing.T) {
+	event := newCCIPSendRequestedEvent()
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	meta := result.Message.Metadata
+	if meta == nil {
+		t.Fatal("expected metadata to be set")
+	}
+	if meta.Fee != "100000000000000" {
+		t.Errorf("expected fee 100000000000000, got %s", meta.Fee)
+	}
+}
+
+func TestNormalizeCCIPSendRequested_NoDestination(t *testing.T) {
+	event := newCCIPSendRequestedEvent()
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Message.Destination != nil {
+		t.Error("CCIPSendRequested should not have a destination")
+	}
+}
+
+func TestNormalizeCCIPSendRequested_MissingMessageID(t *testing.T) {
+	event := newCCIPSendRequestedEvent()
+	delete(event.Data, "message_id")
+	_, err := Normalize(event)
+	if err == nil {
+		t.Fatal("expected error for missing message_id")
+	}
+}
+
+func TestNormalizeCCIPSendRequested_MissingSender(t *testing.T) {
+	event := newCCIPSendRequestedEvent()
+	delete(event.Data, "sender")
+	_, err := Normalize(event)
+	if err == nil {
+		t.Fatal("expected error for missing sender")
+	}
+}
+
+func TestNormalizeCCIPSendRequested_InvalidSrcChainID(t *testing.T) {
+	event := newCCIPSendRequestedEvent()
+	event.Data["src_chain_id"] = "not-a-number"
+	_, err := Normalize(event)
+	if err == nil {
+		t.Fatal("expected error for invalid src_chain_id")
+	}
+}
+
+func TestNormalizeCCIPSendRequested_InvalidNonce(t *testing.T) {
+	event := newCCIPSendRequestedEvent()
+	event.Data["nonce"] = "nan"
+	_, err := Normalize(event)
+	if err == nil {
+		t.Fatal("expected error for invalid nonce")
+	}
+}
+
+// ─── ExecutionStateChanged normalizer tests ───────────────────────────────
+
+func TestNormalizeCCIPExecutionStateChanged_CorrelationKey(t *testing.T) {
+	event := newCCIPExecutionStateChangedEvent()
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !result.IsCorrelation {
+		t.Error("ExecutionStateChanged should be a correlation event")
+	}
+
+	key := result.CorrelationKey
+	if key == nil {
+		t.Fatal("expected correlation key to be set")
+	}
+	if key.Protocol != "ccip" {
+		t.Errorf("expected protocol ccip, got %s", key.Protocol)
+	}
+	// CCIP uses direct MessageID lookup (same pattern as Axelar commandId)
+	if key.MessageID != "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab" {
+		t.Errorf("expected MessageID to be CCIP messageId, got %s", key.MessageID)
+	}
+	// Nonce and Sender should be zero/empty — CCIP correlates by messageId only
+	if key.Nonce != 0 {
+		t.Errorf("expected zero Nonce for CCIP correlation, got %d", key.Nonce)
+	}
+	if key.Sender != "" {
+		t.Errorf("expected empty Sender for CCIP correlation, got %s", key.Sender)
+	}
+}
+
+func TestNormalizeCCIPExecutionStateChanged_DestinationFields(t *testing.T) {
+	event := newCCIPExecutionStateChangedEvent()
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dest := result.Message.Destination
+	if dest == nil {
+		t.Fatal("expected destination to be set")
+	}
+	if dest.ChainID != 42161 {
+		t.Errorf("expected chain_id 42161, got %d", dest.ChainID)
+	}
+	if dest.TxHash != "0xccip333ccc" {
+		t.Errorf("expected tx_hash, got %s", dest.TxHash)
+	}
+	if dest.BlockNumber != 210000000 {
+		t.Errorf("expected block_number 210000000, got %d", dest.BlockNumber)
+	}
+	if dest.Timestamp != 1708000090 {
+		t.Errorf("expected timestamp 1708000090, got %d", dest.Timestamp)
+	}
+}
+
+func TestNormalizeCCIPExecutionStateChanged_SuccessStatus(t *testing.T) {
+	event := newCCIPExecutionStateChangedEvent() // state=2
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Message.Status != types.StatusExecuted {
+		t.Errorf("expected StatusExecuted for state=2, got %s", result.Message.Status)
+	}
+}
+
+func TestNormalizeCCIPExecutionStateChanged_FailureStatus(t *testing.T) {
+	event := newCCIPExecutionFailedEvent() // state=3
+	result, err := Normalize(event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Message.Status != types.StatusFailed {
+		t.Errorf("expected StatusFailed for state=3, got %s", result.Message.Status)
+	}
+}
+
+func TestNormalizeCCIPExecutionStateChanged_MissingMessageID(t *testing.T) {
+	event := newCCIPExecutionStateChangedEvent()
+	delete(event.Data, "message_id")
+	_, err := Normalize(event)
+	if err == nil {
+		t.Fatal("expected error for missing message_id")
+	}
+}
+
+func TestNormalizeCCIPExecutionStateChanged_MissingState(t *testing.T) {
+	event := newCCIPExecutionStateChangedEvent()
+	delete(event.Data, "state")
+	_, err := Normalize(event)
+	if err == nil {
+		t.Fatal("expected error for missing state")
+	}
+}
+
+func TestNormalizeCCIPExecutionStateChanged_InvalidState(t *testing.T) {
+	event := newCCIPExecutionStateChangedEvent()
+	event.Data["state"] = "not-a-number"
+	_, err := Normalize(event)
+	if err == nil {
+		t.Fatal("expected error for invalid state")
+	}
+}
+
+func TestNormalizeCCIPExecutionStateChanged_NonTerminalStateSkipped(t *testing.T) {
+	// States 0 (Untouched) and 1 (InProgress) are non-terminal and must be
+	// skipped to avoid the correlator accidentally updating messages.
+	for _, state := range []string{"0", "1"} {
+		event := newCCIPExecutionStateChangedEvent()
+		event.Data["state"] = state
+		_, err := Normalize(event)
+		if err == nil {
+			t.Errorf("expected error for non-terminal state %s, got nil", state)
+		}
+	}
+}
+
+// ─── Cross-event message ID consistency ───────────────────────────────────
+
+// TestCCIPMessageIDConsistencyAcrossEvents verifies that the message_id field
+// produced by CCIPSendRequested normalisation exactly matches the MessageID
+// used as the correlation key in ExecutionStateChanged normalisation.
+// A mismatch here would cause FindByCorrelationKey to return nil for every
+// CCIP message, silently preventing any CCIP message from reaching 'executed'.
+func TestCCIPMessageIDConsistencyAcrossEvents(t *testing.T) {
+	sendEvent := newCCIPSendRequestedEvent()
+	execEvent := newCCIPExecutionStateChangedEvent()
+
+	// Both events share the same message_id value.
+	sendResult, err := Normalize(sendEvent)
+	if err != nil {
+		t.Fatalf("failed to normalize CCIPSendRequested: %v", err)
+	}
+
+	execResult, err := Normalize(execEvent)
+	if err != nil {
+		t.Fatalf("failed to normalize ExecutionStateChanged: %v", err)
+	}
+
+	sourceMessageID := sendResult.Message.MessageID
+	correlationMessageID := execResult.CorrelationKey.MessageID
+
+	if sourceMessageID != correlationMessageID {
+		t.Errorf(
+			"CORRELATION MISMATCH: CCIPSendRequested stores message_id=%q but "+
+				"ExecutionStateChanged correlates with MessageID=%q — "+
+				"these MUST be identical for FindByCorrelationKey to work",
+			sourceMessageID,
+			correlationMessageID,
+		)
 	}
 }

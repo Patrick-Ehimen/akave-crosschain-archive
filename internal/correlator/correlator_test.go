@@ -259,6 +259,117 @@ func TestProcess_PacketReceived_UpdateDestError(t *testing.T) {
 	}
 }
 
+func TestProcess_CCIPExecutionStateChanged_SuccessStatus(t *testing.T) {
+	existing := &types.Message{
+		MessageID: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+		Protocol:  "ccip",
+		Status:    types.StatusPending,
+	}
+	store := &mockMessageStore{findResult: existing}
+	c := newTestCorrelator(store)
+
+	event := &decoder.RawEvent{
+		Protocol:    "ccip",
+		ChainID:     42161,
+		BlockNumber: 210000000,
+		TxHash:      "0xccip333ccc",
+		LogIndex:    2,
+		Timestamp:   1708000090,
+		EventType:   "ExecutionStateChanged",
+		Data: map[string]string{
+			"message_id":      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+			"sequence_number": "42",
+			"state":           "2",
+			"state_name":      "success",
+			"return_data":     "0x",
+		},
+	}
+
+	err := c.Process(context.Background(), event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if store.updateDestCall == nil {
+		t.Fatal("expected UpdateDestination to be called")
+	}
+	if store.updateDestCall.Status != types.StatusExecuted {
+		t.Errorf("expected status executed for state=2, got %s", store.updateDestCall.Status)
+	}
+}
+
+func TestProcess_CCIPExecutionStateChanged_FailureStatus(t *testing.T) {
+	existing := &types.Message{
+		MessageID: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+		Protocol:  "ccip",
+		Status:    types.StatusPending,
+	}
+	store := &mockMessageStore{findResult: existing}
+	c := newTestCorrelator(store)
+
+	event := &decoder.RawEvent{
+		Protocol:    "ccip",
+		ChainID:     8453,
+		BlockNumber: 5100000,
+		TxHash:      "0xccip444ddd",
+		LogIndex:    9,
+		Timestamp:   1708000200,
+		EventType:   "ExecutionStateChanged",
+		Data: map[string]string{
+			"message_id":      "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+			"sequence_number": "1",
+			"state":           "3",
+			"state_name":      "failure",
+			"return_data":     "0x08c379a0",
+		},
+	}
+
+	err := c.Process(context.Background(), event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if store.updateDestCall == nil {
+		t.Fatal("expected UpdateDestination to be called")
+	}
+	if store.updateDestCall.Status != types.StatusFailed {
+		t.Errorf("expected status failed for state=3, got %s", store.updateDestCall.Status)
+	}
+}
+
+func TestProcess_CCIPExecutionStateChanged_NonTerminalSkipped(t *testing.T) {
+	store := &mockMessageStore{}
+	c := newTestCorrelator(store)
+
+	event := &decoder.RawEvent{
+		Protocol:    "ccip",
+		ChainID:     42161,
+		BlockNumber: 210000000,
+		TxHash:      "0xccip555eee",
+		LogIndex:    1,
+		Timestamp:   1708000050,
+		EventType:   "ExecutionStateChanged",
+		Data: map[string]string{
+			"message_id":      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"sequence_number": "10",
+			"state":           "1",
+			"state_name":      "in_progress",
+			"return_data":     "0x",
+		},
+	}
+
+	// Non-terminal states (0, 1) should error during normalization
+	err := c.Process(context.Background(), event)
+	if err == nil {
+		t.Fatal("expected error for non-terminal execution state")
+	}
+
+	// Should NOT have called UpdateDestination
+	if store.updateDestCall != nil {
+		t.Error("expected UpdateDestination to NOT be called for non-terminal state")
+	}
+}
+
 func TestProcess_UnsupportedEventType(t *testing.T) {
 	store := &mockMessageStore{}
 	c := newTestCorrelator(store)

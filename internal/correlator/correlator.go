@@ -65,14 +65,22 @@ func (c *Correlator) correlate(ctx context.Context, event *decoder.RawEvent, res
 		return nil
 	}
 
-	err = c.store.UpdateDestination(ctx, existing.MessageID, result.Message.Destination, types.StatusExecuted)
+	// Use the status from the normalizer result if set (e.g. CCIP StatusFailed),
+	// otherwise default to StatusExecuted for backward compatibility with protocols
+	// that don't set status on correlation results (LayerZero, Axelar, Wormhole).
+	status := result.Message.Status
+	if status == "" {
+		status = types.StatusExecuted
+	}
+
+	err = c.store.UpdateDestination(ctx, existing.MessageID, result.Message.Destination, status)
 	if err != nil {
 		return fmt.Errorf("updating destination for message %s: %w", existing.MessageID, err)
 	}
 
 	c.log.Info().
 		Str("message_id", existing.MessageID).
-		Str("status", string(types.StatusExecuted)).
+		Str("status", string(status)).
 		Msg("Correlated destination event with existing message")
 
 	return nil
