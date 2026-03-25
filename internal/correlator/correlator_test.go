@@ -370,6 +370,240 @@ func TestProcess_CCIPExecutionStateChanged_NonTerminalSkipped(t *testing.T) {
 	}
 }
 
+// ─── Axelar correlator tests ──────────────────────────────────────────────
+
+func TestProcess_ContractCallApproved_UpsertsCalled(t *testing.T) {
+	store := &mockMessageStore{}
+	c := newTestCorrelator(store)
+
+	event := &decoder.RawEvent{
+		Protocol:    "axelar",
+		ChainID:     43114,
+		BlockNumber: 50000000,
+		TxHash:      "0xaxelar456",
+		LogIndex:    2,
+		Timestamp:   1707000060,
+		EventType:   "ContractCallApproved",
+		Data: map[string]string{
+			"command_id":     "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			"source_chain":   "ethereum",
+			"source_address": "0xSender1111111111111111111111111111111111",
+			"src_chain_id":   "1",
+			"source_tx_hash": "0xaxelar123",
+		},
+	}
+
+	err := c.Process(context.Background(), event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(store.upserted) != 1 {
+		t.Fatalf("expected 1 upsert, got %d", len(store.upserted))
+	}
+
+	msg := store.upserted[0]
+	if msg.Protocol != "axelar" {
+		t.Errorf("expected protocol axelar, got %s", msg.Protocol)
+	}
+	if msg.Type != types.TypeContractCall {
+		t.Errorf("expected type contract_call, got %s", msg.Type)
+	}
+	if msg.Status != types.StatusPending {
+		t.Errorf("expected status pending, got %s", msg.Status)
+	}
+}
+
+func TestProcess_AxelarExecuted_CorrelatesExisting(t *testing.T) {
+	existing := &types.Message{
+		MessageID: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Protocol:  "axelar",
+		Status:    types.StatusPending,
+	}
+	store := &mockMessageStore{findResult: existing}
+	c := newTestCorrelator(store)
+
+	event := &decoder.RawEvent{
+		Protocol:    "axelar",
+		ChainID:     43114,
+		BlockNumber: 50000100,
+		TxHash:      "0xaxelar789",
+		LogIndex:    8,
+		Timestamp:   1707000120,
+		EventType:   "Executed",
+		Data: map[string]string{
+			"command_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		},
+	}
+
+	err := c.Process(context.Background(), event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(store.upserted) != 0 {
+		t.Errorf("expected 0 upserts for correlation event, got %d", len(store.upserted))
+	}
+	if store.updateDestCall == nil {
+		t.Fatal("expected UpdateDestination to be called")
+	}
+	if store.updateDestCall.Status != types.StatusExecuted {
+		t.Errorf("expected status executed, got %s", store.updateDestCall.Status)
+	}
+	if store.updateDestCall.Dest.ChainID != 43114 {
+		t.Errorf("expected dest chain_id 43114, got %d", store.updateDestCall.Dest.ChainID)
+	}
+}
+
+func TestProcess_AxelarExecuted_NoMatchSkips(t *testing.T) {
+	store := &mockMessageStore{findResult: nil}
+	c := newTestCorrelator(store)
+
+	event := &decoder.RawEvent{
+		Protocol:    "axelar",
+		ChainID:     43114,
+		BlockNumber: 50000100,
+		TxHash:      "0xaxelar789",
+		LogIndex:    8,
+		Timestamp:   1707000120,
+		EventType:   "Executed",
+		Data: map[string]string{
+			"command_id": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+		},
+	}
+
+	err := c.Process(context.Background(), event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if store.updateDestCall != nil {
+		t.Error("expected UpdateDestination to NOT be called for unmatched event")
+	}
+}
+
+// ─── Wormhole correlator tests ────────────────────────────────────────────
+
+func TestProcess_LogMessagePublished_UpsertsCalled(t *testing.T) {
+	store := &mockMessageStore{}
+	c := newTestCorrelator(store)
+
+	event := &decoder.RawEvent{
+		Protocol:    "wormhole",
+		ChainID:     1,
+		BlockNumber: 19000000,
+		TxHash:      "0xwh123",
+		LogIndex:    7,
+		Timestamp:   1706000000,
+		EventType:   "LogMessagePublished",
+		Data: map[string]string{
+			"sender":     "0x3ee18B2214AFF97000D974cf647E7C347E8fa585",
+			"sequence":   "42",
+			"payload":    "0xdeadbeef",
+			"message_id": "2/0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585/42",
+		},
+	}
+
+	err := c.Process(context.Background(), event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(store.upserted) != 1 {
+		t.Fatalf("expected 1 upsert, got %d", len(store.upserted))
+	}
+
+	msg := store.upserted[0]
+	if msg.Protocol != "wormhole" {
+		t.Errorf("expected protocol wormhole, got %s", msg.Protocol)
+	}
+	if msg.Type != types.TypeMessage {
+		t.Errorf("expected type message, got %s", msg.Type)
+	}
+	if msg.Status != types.StatusPending {
+		t.Errorf("expected status pending, got %s", msg.Status)
+	}
+}
+
+func TestProcess_TransferRedeemed_CorrelatesExisting(t *testing.T) {
+	existing := &types.Message{
+		MessageID: "2/0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585/42",
+		Protocol:  "wormhole",
+		Status:    types.StatusPending,
+	}
+	store := &mockMessageStore{findResult: existing}
+	c := newTestCorrelator(store)
+
+	event := &decoder.RawEvent{
+		Protocol:    "wormhole",
+		ChainID:     42161,
+		BlockNumber: 180000000,
+		TxHash:      "0xwh456",
+		LogIndex:    3,
+		Timestamp:   1706000045,
+		EventType:   "TransferRedeemed",
+		Data: map[string]string{
+			"sender":       "0x3ee18B2214AFF97000D974cf647E7C347E8fa585",
+			"sequence":     "42",
+			"src_chain_id": "1",
+			"receiver":     "0x0b2402144Bb366A632D14B83F244D2e0e21bD39c",
+			"message_id":   "2/0x0000000000000000000000003ee18b2214aff97000d974cf647e7c347e8fa585/42",
+		},
+	}
+
+	err := c.Process(context.Background(), event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(store.upserted) != 0 {
+		t.Errorf("expected 0 upserts for correlation event, got %d", len(store.upserted))
+	}
+	if store.updateDestCall == nil {
+		t.Fatal("expected UpdateDestination to be called")
+	}
+	if store.updateDestCall.Status != types.StatusExecuted {
+		t.Errorf("expected status executed, got %s", store.updateDestCall.Status)
+	}
+	if store.updateDestCall.Dest.ChainID != 42161 {
+		t.Errorf("expected dest chain_id 42161, got %d", store.updateDestCall.Dest.ChainID)
+	}
+	if store.updateDestCall.Dest.Receiver != "0x0b2402144Bb366A632D14B83F244D2e0e21bD39c" {
+		t.Errorf("expected dest receiver 0x0b2402..., got %s", store.updateDestCall.Dest.Receiver)
+	}
+}
+
+func TestProcess_TransferRedeemed_NoMatchSkips(t *testing.T) {
+	store := &mockMessageStore{findResult: nil}
+	c := newTestCorrelator(store)
+
+	event := &decoder.RawEvent{
+		Protocol:    "wormhole",
+		ChainID:     42161,
+		BlockNumber: 180000000,
+		TxHash:      "0xwh456",
+		LogIndex:    3,
+		Timestamp:   1706000045,
+		EventType:   "TransferRedeemed",
+		Data: map[string]string{
+			"sender":       "0xUnknownSender",
+			"sequence":     "999",
+			"src_chain_id": "1",
+			"receiver":     "0xReceiver",
+			"message_id":   "2/0xUnknownEmitter/999",
+		},
+	}
+
+	err := c.Process(context.Background(), event)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if store.updateDestCall != nil {
+		t.Error("expected UpdateDestination to NOT be called for unmatched event")
+	}
+}
+
 func TestProcess_UnsupportedEventType(t *testing.T) {
 	store := &mockMessageStore{}
 	c := newTestCorrelator(store)
