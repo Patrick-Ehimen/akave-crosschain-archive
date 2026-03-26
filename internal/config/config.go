@@ -14,7 +14,16 @@ type Config struct {
 	Chains   map[uint64]Chain `mapstructure:"chains"`
 	Akave    Akave            `mapstructure:"akave"`
 	Indexer  Indexer          `mapstructure:"indexer"`
+	API      API              `mapstructure:"api"`
 	Logging  Logging          `mapstructure:"logging"`
+}
+
+// API holds REST API server configuration.
+type API struct {
+	Port               int           `mapstructure:"port"`
+	ReadTimeout        time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout       time.Duration `mapstructure:"write_timeout"`
+	CORSAllowedOrigins []string      `mapstructure:"cors_allowed_origins"`
 }
 
 // Database holds PostgreSQL connection parameters.

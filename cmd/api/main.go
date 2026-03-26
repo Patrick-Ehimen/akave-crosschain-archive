@@ -9,11 +9,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/api"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 )
 
 func main() {
@@ -42,22 +44,50 @@ func main() {
 	defer dbpool.Close()
 	log.Info().Msg("Connected to PostgreSQL")
 
-	// 4. Stub HTTP server with chi
+	// 4. HTTP server with chi
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+
+	allowedOrigins := cfg.API.CORSAllowedOrigins
+	if len(allowedOrigins) == 0 {
+		allowedOrigins = []string{"*"}
+	}
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   allowedOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
+
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
-	})
+	r.Get("/health", api.HealthHandler(dbpool, api.NewPgCursorQuerier(dbpool)))
+
+	port := cfg.API.Port
+	if port == 0 {
+		port = 8080
+	}
+
+	readTimeout := cfg.API.ReadTimeout
+	if readTimeout == 0 {
+		readTimeout = 15 * time.Second
+	}
+
+	writeTimeout := cfg.API.WriteTimeout
+	if writeTimeout == 0 {
+		writeTimeout = 30 * time.Second
+	}
 
 	server := &http.Server{
-		Addr:    ":8080",
-		Handler: r,
+		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      r,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 	}
 
 	// 5. Graceful shutdown
