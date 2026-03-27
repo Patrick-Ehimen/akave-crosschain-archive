@@ -74,6 +74,9 @@ func main() {
 	r.Get("/messages/{message_id}", api.GetMessageHandler(mq))
 	r.Get("/transactions/{tx_hash}/messages", api.GetTxMessagesHandler(mq))
 
+	r.Get("/address/{address}/history", api.GetAddressHistoryHandler(mq))
+	r.Get("/trace/{message_id}", api.GetTraceHandler(mq))
+	
 	port := cfg.API.Port
 	if port == 0 {
 		port = 8080
