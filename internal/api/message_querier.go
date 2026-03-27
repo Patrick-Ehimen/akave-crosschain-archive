@@ -64,6 +64,9 @@ type MessageQuerier interface {
 	GetByID(ctx context.Context, messageID string) (*types.Message, error)
 	List(ctx context.Context, filter MessageFilter) (*MessageListResult, error)
 	GetByTxHash(ctx context.Context, txHash string) ([]*types.Message, error)
+	GetAddressHistory(ctx context.Context, address string, filter AddressHistoryFilter) (*MessageListResult, error)
+    GetTrace(ctx context.Context, messageID string) (*TraceResponse, error)
+
 }
 
 // PgMessageQuerier implements MessageQuerier using PostgreSQL.
