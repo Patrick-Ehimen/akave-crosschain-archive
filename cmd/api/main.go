@@ -76,7 +76,11 @@ func main() {
 
 	r.Get("/address/{address}/history", api.GetAddressHistoryHandler(mq))
 	r.Get("/trace/{message_id}", api.GetTraceHandler(mq))
-	
+
+	sq := api.NewPgStatsQuerier(dbpool)
+	r.Get("/protocols/{protocol}/stats", api.GetProtocolStatsHandler(sq))
+	r.Get("/routes/stats", api.GetRoutesStatsHandler(sq))
+
 	port := cfg.API.Port
 	if port == 0 {
 		port = 8080
