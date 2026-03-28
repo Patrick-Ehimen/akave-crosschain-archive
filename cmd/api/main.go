@@ -68,6 +68,12 @@ func main() {
 
 	r.Get("/health", api.HealthHandler(dbpool, api.NewPgCursorQuerier(dbpool)))
 
+	// Message query endpoints
+	mq := api.NewPgMessageQuerier(dbpool)
+	r.Get("/messages", api.ListMessagesHandler(mq))
+	r.Get("/messages/{message_id}", api.GetMessageHandler(mq))
+	r.Get("/transactions/{tx_hash}/messages", api.GetTxMessagesHandler(mq))
+
 	port := cfg.API.Port
 	if port == 0 {
 		port = 8080
