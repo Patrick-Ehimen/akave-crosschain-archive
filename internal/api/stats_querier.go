@@ -257,7 +257,13 @@ func (q *PgStatsQuerier) GetProtocolStats(ctx context.Context, protocol string, 
 	counts.Total = counts.Executed + counts.Pending + counts.Failed
 
 	// ── 2. Latency percentiles ────────────────────────────────────────────
-	// Re-use the same args slice; args[0] is still protocol.
+	// Build a separate args slice for the latency query so the status
+	// filter uses a parameterized placeholder instead of interpolation.
+	latencyArgs := make([]interface{}, len(args))
+	copy(latencyArgs, args)
+	latencyArgs = append(latencyArgs, string(types.StatusExecuted))
+	statusArgIdx := len(latencyArgs)
+
 	latencySQL := fmt.Sprintf(`
 		SELECT
 			AVG(md.latency_seconds)::float8,
@@ -267,16 +273,16 @@ func (q *PgStatsQuerier) GetProtocolStats(ctx context.Context, protocol string, 
 		JOIN   messages m ON md.message_id = m.message_id
 		%s
 		WHERE  m.protocol  = $1
-		  AND  m.status    = '%s'
+		  AND  m.status    = $%d
 		  AND  md.latency_seconds > 0
 		%s`,
 		tsJoin,
-		string(types.StatusExecuted),
+		statusArgIdx,
 		tsWhere.String(),
 	)
 
 	var avgLat, p50Lat, p95Lat *float64
-	if err := q.pool.QueryRow(ctx, latencySQL, args...).
+	if err := q.pool.QueryRow(ctx, latencySQL, latencyArgs...).
 		Scan(&avgLat, &p50Lat, &p95Lat); err != nil {
 		return nil, fmt.Errorf("querying protocol latency: %w", err)
 	}
