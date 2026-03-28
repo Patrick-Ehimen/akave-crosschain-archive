@@ -100,35 +100,37 @@ func (q *PgMessageQuerier) GetAddressHistory(
 		argIdx += 2
 	}
 
+	// Build the WHERE clause for the outer query. The CTE already filters
+	// by address, so these conditions use AND against the joined tables.
 	whereClause := ""
 	if len(conditions) > 0 {
-		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+		whereClause = "AND " + strings.Join(conditions, " AND ")
 	}
 
-	// The UNION identifies whether the address matched as sender or receiver,
-	// allowing the caller to understand the address's role in each message.
-	// We fetch limit+1 to detect whether a next page exists.
+	// A CTE first resolves the matching message IDs via indexed UNION,
+	// then the outer query joins the full message data and sorts by
+	// (created_at, message_id) for correct cursor-based pagination.
 	query := fmt.Sprintf(`
-		SELECT DISTINCT ON (m.message_id)
-		       m.message_id, m.protocol, m.type, m.status, m.created_at, m.updated_at,
+		WITH matching_ids AS (
+			SELECT message_id FROM message_sources WHERE sender = $1
+			UNION
+			SELECT message_id FROM message_destinations WHERE receiver = $1
+		)
+		SELECT m.message_id, m.protocol, m.type, m.status, m.created_at, m.updated_at,
 		       s.chain_id, s.tx_hash, s.block_number, s.timestamp, s.sender, s.log_index,
 		       d.chain_id, d.tx_hash, d.block_number, d.timestamp, d.receiver, d.log_index,
 		       p.token, p.amount, p.data, p.nonce,
 		       md.fee, md.relayer, md.gas_used, md.latency_seconds
 		FROM messages m
+		JOIN matching_ids mi ON m.message_id = mi.message_id
 		JOIN message_sources s ON m.message_id = s.message_id
 		LEFT JOIN message_destinations d ON m.message_id = d.message_id
 		LEFT JOIN message_payloads p ON m.message_id = p.message_id
 		LEFT JOIN message_metadata md ON m.message_id = md.message_id
-		WHERE m.message_id IN (
-			SELECT message_id FROM message_sources WHERE sender = $1
-			UNION
-			SELECT message_id FROM message_destinations WHERE receiver = $1
-		)
-		%s
-		ORDER BY m.message_id, m.created_at %s
+		WHERE TRUE %s
+		ORDER BY m.created_at %s, m.message_id %s
 		LIMIT $%d`,
-		whereClause, sortOrder, argIdx)
+		whereClause, sortOrder, sortOrder, argIdx)
 
 	args = append(args, limit+1)
 
