@@ -33,6 +33,14 @@ func (m *mockMessageQuerier) GetByTxHash(ctx context.Context, txHash string) ([]
 	return m.getByTxFn(ctx, txHash)
 }
 
+func (m *mockMessageQuerier) GetAddressHistory(_ context.Context, _ string, _ AddressHistoryFilter) (*MessageListResult, error) {
+	return &MessageListResult{}, nil
+}
+
+func (m *mockMessageQuerier) GetTrace(_ context.Context, _ string) (*TraceResponse, error) {
+	return nil, nil
+}
+
 func sampleMessage() *types.Message {
 	now := time.Now().Truncate(time.Second)
 	return &types.Message{
