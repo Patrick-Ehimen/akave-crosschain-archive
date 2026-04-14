@@ -157,7 +157,7 @@ func TestE2E_CrossProtocol_ArchivalPipeline(t *testing.T) {
 		TotalFiles int `json:"total_files"`
 		TotalRows  int `json:"total_rows"`
 		Files      []struct {
-			Protocol string `json:"protocol"`
+			Protocol  string `json:"protocol"`
 			ObjectKey string `json:"object_key"`
 		} `json:"files"`
 	}

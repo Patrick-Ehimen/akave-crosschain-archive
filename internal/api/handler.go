@@ -28,7 +28,7 @@ type IndexerStateQuerier interface {
 type healthResponse struct {
 	Status   string        `json:"status"`
 	Database string        `json:"database"`
-	Indexer  *indexerState  `json:"indexer,omitempty"`
+	Indexer  *indexerState `json:"indexer,omitempty"`
 	Error    string        `json:"error,omitempty"`
 }
 

@@ -16,9 +16,9 @@ import (
 
 // mockMessageQuerier implements MessageQuerier for testing.
 type mockMessageQuerier struct {
-	getByIDFn    func(ctx context.Context, id string) (*types.Message, error)
-	listFn       func(ctx context.Context, f MessageFilter) (*MessageListResult, error)
-	getByTxFn    func(ctx context.Context, txHash string) ([]*types.Message, error)
+	getByIDFn func(ctx context.Context, id string) (*types.Message, error)
+	listFn    func(ctx context.Context, f MessageFilter) (*MessageListResult, error)
+	getByTxFn func(ctx context.Context, txHash string) ([]*types.Message, error)
 }
 
 func (m *mockMessageQuerier) GetByID(ctx context.Context, id string) (*types.Message, error) {

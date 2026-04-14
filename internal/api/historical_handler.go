@@ -102,13 +102,13 @@ func GetHistoricalMessagesHandler(store HistoricalStore, o3 *akave.Client) http.
 		w.Header().Set("X-Archive-Checksum", rec.Checksum)
 		w.Header().Set("X-Archive-Row-Count", strconv.FormatInt(rec.RowCount, 10))
 		json.NewEncoder(w).Encode(map[string]any{
-			"object_key":  rec.ObjectKey,
-			"year_month":  rec.YearMonth,
-			"protocol":    rec.Protocol,
-			"chain_id":    rec.ChainID,
-			"checksum":    rec.Checksum,
-			"row_count":   len(records),
-			"records":     records,
+			"object_key": rec.ObjectKey,
+			"year_month": rec.YearMonth,
+			"protocol":   rec.Protocol,
+			"chain_id":   rec.ChainID,
+			"checksum":   rec.Checksum,
+			"row_count":  len(records),
+			"records":    records,
 		})
 	}
 }

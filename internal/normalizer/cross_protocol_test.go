@@ -137,15 +137,15 @@ func TestAllProtocols_CorrelationEvents_ProduceConsistentResult(t *testing.T) {
 			expectReceiver: true,
 		},
 		{
-			name:         "Axelar/Executed",
-			event:        newExecutedEvent(),
-			protocol:     "axelar",
+			name:          "Axelar/Executed",
+			event:         newExecutedEvent(),
+			protocol:      "axelar",
 			usesMessageID: true,
 		},
 		{
-			name:         "CCIP/ExecutionStateChanged",
-			event:        newCCIPExecutionStateChangedEvent(),
-			protocol:     "ccip",
+			name:          "CCIP/ExecutionStateChanged",
+			event:         newCCIPExecutionStateChangedEvent(),
+			protocol:      "ccip",
 			usesMessageID: true,
 		},
 	}

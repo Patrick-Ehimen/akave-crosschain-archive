@@ -49,8 +49,8 @@ func (d Database) DSN() string {
 // Chain holds configuration for a single EVM chain.
 type Chain struct {
 	Name              string   `mapstructure:"name"`
-	RPCURLs           []string `mapstructure:"rpc_urls"`            // preferred: list of endpoints for failover
-	RPCURL            string   `mapstructure:"rpc_url"`             // legacy: single endpoint (merged into RPCURLs on Load)
+	RPCURLs           []string `mapstructure:"rpc_urls"` // preferred: list of endpoints for failover
+	RPCURL            string   `mapstructure:"rpc_url"`  // legacy: single endpoint (merged into RPCURLs on Load)
 	ConfirmationDepth uint64   `mapstructure:"confirmation_depth"`
 	MaxBlockRange     uint64   `mapstructure:"max_block_range"`
 	RateLimit         int      `mapstructure:"rate_limit"`

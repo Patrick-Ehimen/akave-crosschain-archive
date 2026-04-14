@@ -45,27 +45,27 @@ func init() {
 // The Core Bridge emits LogMessagePublished on the source chain.
 // Reference: https://docs.wormhole.com/wormhole/reference/contract-addresses
 var CoreBridgeAddresses = map[uint64]common.Address{
-	1:      common.HexToAddress("0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B"), // Ethereum
-	56:     common.HexToAddress("0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B"), // BSC
-	137:    common.HexToAddress("0x7A4B5a56256163F07b2C80A7cA55aBE66c4ec4d7"), // Polygon
-	43114:  common.HexToAddress("0x54a8e5f9c4CbA08F9943965859F6c34eAF03E26c"), // Avalanche
-	42161:  common.HexToAddress("0xa5f208e072434bC67592E4C49C1B991BA79BCA46"), // Arbitrum
-	10:     common.HexToAddress("0xEe91C335eab126dF5fDB3797EA9d6aD93aeC9722"), // Optimism
-	8453:   common.HexToAddress("0xbebdb6C8ddC678FfA9f8748f85C815C556Dd8ac6"), // Base
-	250:    common.HexToAddress("0x126783A6Cb203a3E35344528B26ca3a0489a1485"), // Fantom
+	1:     common.HexToAddress("0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B"), // Ethereum
+	56:    common.HexToAddress("0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B"), // BSC
+	137:   common.HexToAddress("0x7A4B5a56256163F07b2C80A7cA55aBE66c4ec4d7"), // Polygon
+	43114: common.HexToAddress("0x54a8e5f9c4CbA08F9943965859F6c34eAF03E26c"), // Avalanche
+	42161: common.HexToAddress("0xa5f208e072434bC67592E4C49C1B991BA79BCA46"), // Arbitrum
+	10:    common.HexToAddress("0xEe91C335eab126dF5fDB3797EA9d6aD93aeC9722"), // Optimism
+	8453:  common.HexToAddress("0xbebdb6C8ddC678FfA9f8748f85C815C556Dd8ac6"), // Base
+	250:   common.HexToAddress("0x126783A6Cb203a3E35344528B26ca3a0489a1485"), // Fantom
 }
 
 // TokenBridgeAddresses maps EVM chain IDs to the Wormhole Token Bridge contract.
 // The Token Bridge emits TransferRedeemed on the destination chain.
 var TokenBridgeAddresses = map[uint64]common.Address{
-	1:      common.HexToAddress("0x3ee18B2214AFF97000D974cf647E7C347E8fa585"), // Ethereum
-	56:     common.HexToAddress("0xB6F6D86a8f9879A9c87f643768d9efc38c1Da6E7"), // BSC
-	137:    common.HexToAddress("0x5a58505a96D1dbf8dF91cB21B54419FC36e93fdE"), // Polygon
-	43114:  common.HexToAddress("0x0e082F06FF657D94310cB8cE8B0D9a04541d8052"), // Avalanche
-	42161:  common.HexToAddress("0x0b2402144Bb366A632D14B83F244D2e0e21bD39c"), // Arbitrum
-	10:     common.HexToAddress("0x1D68124e65faFC907325e3EDbF8c4d84499DAa8b"), // Optimism
-	8453:   common.HexToAddress("0x8d2de8d2f73F1F4cAB472AC9A881C9b123C79627"), // Base
-	250:    common.HexToAddress("0x7C9Fc5741288cDFdD83CeB07f3ea7e22618D79D2"), // Fantom
+	1:     common.HexToAddress("0x3ee18B2214AFF97000D974cf647E7C347E8fa585"), // Ethereum
+	56:    common.HexToAddress("0xB6F6D86a8f9879A9c87f643768d9efc38c1Da6E7"), // BSC
+	137:   common.HexToAddress("0x5a58505a96D1dbf8dF91cB21B54419FC36e93fdE"), // Polygon
+	43114: common.HexToAddress("0x0e082F06FF657D94310cB8cE8B0D9a04541d8052"), // Avalanche
+	42161: common.HexToAddress("0x0b2402144Bb366A632D14B83F244D2e0e21bD39c"), // Arbitrum
+	10:    common.HexToAddress("0x1D68124e65faFC907325e3EDbF8c4d84499DAa8b"), // Optimism
+	8453:  common.HexToAddress("0x8d2de8d2f73F1F4cAB472AC9A881C9b123C79627"), // Base
+	250:   common.HexToAddress("0x7C9Fc5741288cDFdD83CeB07f3ea7e22618D79D2"), // Fantom
 }
 
 // wormholeABI defines the two events we care about:
