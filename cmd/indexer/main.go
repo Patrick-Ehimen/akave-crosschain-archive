@@ -16,6 +16,7 @@ import (
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/decoder/wormhole"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/indexer"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/metrics"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
 )
@@ -37,7 +38,10 @@ func main() {
 	log := logger.New(cfg.Logging.Level, cfg.Logging.Pretty)
 	log.Info().Msg("Starting CrossChain Archive Indexer")
 
-	// 3. Setup context with graceful shutdown
+	// 3. Register Prometheus metrics
+	metrics.Register()
+
+	// 4. Setup context with graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -49,7 +53,7 @@ func main() {
 		cancel()
 	}()
 
-	// 4. Connect to DB
+	// 5. Connect to DB
 	dbpool, err := postgres.NewPool(ctx, cfg.Database.DSN())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
@@ -57,14 +61,14 @@ func main() {
 	defer dbpool.Close()
 	log.Info().Msg("Connected to PostgreSQL")
 
-	// 5. Connect to RPCs
+	// 6. Connect to RPCs
 	chainMgr, err := chain.NewManager(ctx, cfg.Chains, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to chain RPCs")
 	}
 	defer chainMgr.Close()
 
-	// 6. Init Decoder Registry
+	// 7. Init Decoder Registry
 	registry := decoder.NewRegistry()
 
 	lzDecoder := layerzero.NewLayerZeroDecoder()
@@ -88,23 +92,24 @@ func main() {
 
 	log.Info().Strs("protocols", registry.Protocols()).Msg("Decoder registry initialized")
 
-	// 7. Connect to Akave O3
+	// 8. Connect to Akave O3
 	o3Client, err := akave.NewClient(ctx, cfg.Akave, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to Akave O3 storage")
 	}
 
-	// 8. Build chain name map from config
+	// 9. Build chain name map from config
 	chainNames := make(map[uint64]string, len(cfg.Chains))
 	for chainID, chainCfg := range cfg.Chains {
 		chainNames[chainID] = chainCfg.Name
 	}
 
-	// 9. Initialize cursor store
+	// 10. Initialize cursor and block hash stores
 	cursors := indexer.NewPostgresCursorStore(dbpool)
+	blockHashes := indexer.NewPostgresBlockHashStore(dbpool)
 
-	// 10. Create and start indexer service
-	idx := indexer.New(chainMgr, registry, cursors, dbpool, o3Client, chainNames, cfg.Indexer, log)
+	// 11. Create and start indexer service
+	idx := indexer.New(chainMgr, registry, cursors, blockHashes, dbpool, o3Client, chainNames, cfg.Indexer, log)
 
 	if err := idx.Start(ctx); err != nil && err != context.Canceled {
 		log.Error().Err(err).Msg("Indexer stopped with error")

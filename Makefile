@@ -1,4 +1,4 @@
-.PHONY: build test lint migrate run-indexer run-api clean
+.PHONY: build test coverage lint migrate run-indexer run-api clean
 
 # Binary output directory
 BIN_DIR := bin
@@ -20,6 +20,13 @@ build:
 
 test:
 	$(GOTEST) -v -race ./...
+
+# coverage: run tests with coverage (excludes cmd/* entrypoints; use DATABASE_URL for full coverage)
+coverage:
+	$(GOTEST) -coverprofile=coverage.out -covermode=atomic $(shell go list ./... | grep -v '/cmd/' | grep -v '/tests/')
+	@go tool cover -func=coverage.out | grep total
+	$(GOTEST) -coverprofile=decoder_coverage.out -covermode=atomic ./internal/decoder/...
+	@echo "Decoder coverage:"; go tool cover -func=decoder_coverage.out | grep total
 
 lint:
 	golangci-lint run ./...

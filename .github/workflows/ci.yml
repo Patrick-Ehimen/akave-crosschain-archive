@@ -7,8 +7,54 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Run unit tests with coverage
+        # Exclude cmd/* entrypoints and /tests/ (integration-only) from unit coverage.
+        # DB-dependent packages (indexer, archiver) are tested in the integration step.
+        run: |
+          PKGS=$(go list ./... | grep -v '/cmd/' | grep -v '/tests/')
+          go test -v -race -coverprofile=coverage.out -covermode=atomic $PKGS
+      - name: Report coverage
+        run: go tool cover -func=coverage.out | grep total
+      - name: Check decoder coverage threshold (>85%)
+        run: |
+          go test -coverprofile=decoder_coverage.out -covermode=atomic ./internal/decoder/...
+          DECODER_COVERAGE=$(go tool cover -func=decoder_coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Decoder coverage: ${DECODER_COVERAGE}%"
+          if (( $(echo "$DECODER_COVERAGE < 85" | bc -l) )); then
+            echo "Decoder coverage ${DECODER_COVERAGE}% is below the required 85% threshold"
+            exit 1
+          fi
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
     services:
       postgres:
         image: postgres:15-alpine
@@ -28,17 +74,42 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      - name: Run tests
+      - name: Install migrate
+        run: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+      - name: Run migrations
         env:
           DATABASE_URL: postgres://crosschain:crosschain@localhost:5432/crosschain_archive_test?sslmode=disable
-        run: go test -v -race ./...
+        run: migrate -path migrations -database "$DATABASE_URL" up
+      - name: Run all tests with coverage (DB available)
+        env:
+          DATABASE_URL: postgres://crosschain:crosschain@localhost:5432/crosschain_archive_test?sslmode=disable
+        run: |
+          PKGS=$(go list ./... | grep -v '/cmd/' | grep -v '/tests/')
+          go test -v -race -coverprofile=full_coverage.out -covermode=atomic $PKGS
+      - name: Check overall coverage threshold (>70%)
+        run: |
+          COVERAGE=$(go tool cover -func=full_coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Total coverage (with DB): ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+            echo "Coverage ${COVERAGE}% is below the required 70% threshold"
+            exit 1
+          fi
+      - name: Upload full coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-coverage-report
+          path: full_coverage.out
 
   build:
+    name: Docker Build
     runs-on: ubuntu-latest
+    needs: [lint, unit-tests]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      - name: Build
+      - name: Build binaries
         run: make build
+      - name: Build Docker image
+        run: docker build -t crosschain-archive:${{ github.sha }} .

@@ -20,14 +20,15 @@ import (
 // chains and protocols. It spawns a processor goroutine for each (chain, protocol)
 // combination and manages their lifecycle.
 type Indexer struct {
-	chainMgr   *chain.Manager
-	registry   *decoder.Registry
-	cursors    CursorStore
-	pool       *pgxpool.Pool
-	o3         *akave.Client
-	chainNames map[uint64]string
-	config     config.Indexer
-	log        zerolog.Logger
+	chainMgr    *chain.Manager
+	registry    *decoder.Registry
+	cursors     CursorStore
+	blockHashes BlockHashStore
+	pool        *pgxpool.Pool
+	o3          *akave.Client
+	chainNames  map[uint64]string
+	config      config.Indexer
+	log         zerolog.Logger
 }
 
 // New creates a new Indexer instance with the provided dependencies.
@@ -35,6 +36,7 @@ func New(
 	chainMgr *chain.Manager,
 	registry *decoder.Registry,
 	cursors CursorStore,
+	blockHashes BlockHashStore,
 	pool *pgxpool.Pool,
 	o3 *akave.Client,
 	chainNames map[uint64]string,
@@ -42,14 +44,15 @@ func New(
 	log zerolog.Logger,
 ) *Indexer {
 	return &Indexer{
-		chainMgr:   chainMgr,
-		registry:   registry,
-		cursors:    cursors,
-		pool:       pool,
-		o3:         o3,
-		chainNames: chainNames,
-		config:     cfg,
-		log:        log.With().Str("component", "indexer").Logger(),
+		chainMgr:    chainMgr,
+		registry:    registry,
+		cursors:     cursors,
+		blockHashes: blockHashes,
+		pool:        pool,
+		o3:          o3,
+		chainNames:  chainNames,
+		config:      cfg,
+		log:         log.With().Str("component", "indexer").Logger(),
 	}
 }
 
@@ -117,6 +120,7 @@ func (idx *Indexer) Start(ctx context.Context) error {
 					dec,
 					client,
 					idx.cursors,
+					idx.blockHashes,
 					corr,
 					uint64(idx.config.BatchSize),
 					idx.config.PollInterval,

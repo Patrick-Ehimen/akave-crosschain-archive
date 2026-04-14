@@ -48,11 +48,12 @@ func (d Database) DSN() string {
 
 // Chain holds configuration for a single EVM chain.
 type Chain struct {
-	Name              string `mapstructure:"name"`
-	RPCURL            string `mapstructure:"rpc_url"`
-	ConfirmationDepth uint64 `mapstructure:"confirmation_depth"`
-	MaxBlockRange     uint64 `mapstructure:"max_block_range"`
-	RateLimit         int    `mapstructure:"rate_limit"`
+	Name              string   `mapstructure:"name"`
+	RPCURLs           []string `mapstructure:"rpc_urls"`            // preferred: list of endpoints for failover
+	RPCURL            string   `mapstructure:"rpc_url"`             // legacy: single endpoint (merged into RPCURLs on Load)
+	ConfirmationDepth uint64   `mapstructure:"confirmation_depth"`
+	MaxBlockRange     uint64   `mapstructure:"max_block_range"`
+	RateLimit         int      `mapstructure:"rate_limit"`
 }
 
 // Akave holds Akave O3 storage configuration.
@@ -98,6 +99,8 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
 
+	cfg.normalizeChainURLs()
+
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
@@ -116,9 +119,31 @@ func (c *Config) validate() error {
 		return fmt.Errorf("at least one chain must be configured")
 	}
 	for id, chain := range c.Chains {
-		if chain.RPCURL == "" {
-			return fmt.Errorf("chains.%d.rpc_url is required", id)
+		if len(chain.RPCURLs) == 0 {
+			return fmt.Errorf("chains.%d: at least one rpc_url or rpc_urls entry is required", id)
 		}
 	}
 	return nil
+}
+
+// normalizeChainURLs merges the legacy rpc_url field into RPCURLs so the rest
+// of the codebase only needs to handle RPCURLs.
+func (c *Config) normalizeChainURLs() {
+	for id, ch := range c.Chains {
+		if ch.RPCURL != "" {
+			// Prepend legacy URL if it isn't already in RPCURLs
+			found := false
+			for _, u := range ch.RPCURLs {
+				if u == ch.RPCURL {
+					found = true
+					break
+				}
+			}
+			if !found {
+				ch.RPCURLs = append([]string{ch.RPCURL}, ch.RPCURLs...)
+			}
+			ch.RPCURL = ""
+		}
+		c.Chains[id] = ch
+	}
 }

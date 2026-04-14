@@ -125,10 +125,11 @@ type ArchivalRecord struct {
 	ChainID      uint64
 	YearMonth    string
 	RowCount     int64
-	MinTimestamp  int64
-	MaxTimestamp  int64
+	MinTimestamp int64
+	MaxTimestamp int64
 	FileSize     int64
 	ObjectKey    string
+	Checksum     string // SHA-256 hex digest of the Parquet bytes
 	ArchivedAt   time.Time
 }
 
@@ -136,19 +137,20 @@ type ArchivalRecord struct {
 func (s *ArchiveStore) UpsertArchivalCursor(ctx context.Context, rec *ArchivalRecord) error {
 	query := `
 		INSERT INTO archival_cursors (protocol, chain_id, year_month, row_count,
-			min_timestamp, max_timestamp, file_size, object_key, archived_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+			min_timestamp, max_timestamp, file_size, object_key, checksum, archived_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
 		ON CONFLICT (protocol, chain_id, year_month) DO UPDATE SET
 			row_count = EXCLUDED.row_count,
 			min_timestamp = EXCLUDED.min_timestamp,
 			max_timestamp = EXCLUDED.max_timestamp,
 			file_size = EXCLUDED.file_size,
 			object_key = EXCLUDED.object_key,
+			checksum = EXCLUDED.checksum,
 			archived_at = NOW()
 	`
 	_, err := s.pool.Exec(ctx, query,
 		rec.Protocol, rec.ChainID, rec.YearMonth, rec.RowCount,
-		rec.MinTimestamp, rec.MaxTimestamp, rec.FileSize, rec.ObjectKey,
+		rec.MinTimestamp, rec.MaxTimestamp, rec.FileSize, rec.ObjectKey, rec.Checksum,
 	)
 	if err != nil {
 		return fmt.Errorf("upserting archival cursor: %w", err)
@@ -160,7 +162,7 @@ func (s *ArchiveStore) UpsertArchivalCursor(ctx context.Context, rec *ArchivalRe
 func (s *ArchiveStore) ListArchivalCursors(ctx context.Context) ([]ArchivalRecord, error) {
 	query := `
 		SELECT protocol, chain_id, year_month, row_count,
-		       min_timestamp, max_timestamp, file_size, object_key, archived_at
+		       min_timestamp, max_timestamp, file_size, object_key, checksum, archived_at
 		FROM archival_cursors
 		ORDER BY protocol, chain_id, year_month
 	`
@@ -176,7 +178,7 @@ func (s *ArchiveStore) ListArchivalCursors(ctx context.Context) ([]ArchivalRecor
 		err := rows.Scan(
 			&r.Protocol, &r.ChainID, &r.YearMonth, &r.RowCount,
 			&r.MinTimestamp, &r.MaxTimestamp, &r.FileSize,
-			&r.ObjectKey, &r.ArchivedAt,
+			&r.ObjectKey, &r.Checksum, &r.ArchivedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning archival cursor: %w", err)

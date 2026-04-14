@@ -58,8 +58,9 @@ Ethereum, Arbitrum, Optimism, Base, Polygon, Avalanche, BSC
 ```
 crosschain-archive/
 ├── cmd/
-│   ├── indexer/              # Indexer service entrypoint
-│   └── api/                  # API service entrypoint
+│   ├── indexer/              # Live indexer service entrypoint
+│   ├── api/                  # REST API server entrypoint
+│   └── backfill/             # Backfill CLI entrypoint
 ├── internal/
 │   ├── chain/                # Multi-chain RPC client, block poller
 │   ├── decoder/              # Decoder interface + registry
@@ -98,26 +99,34 @@ crosschain-archive/
 | `GET` | `/routes/stats` | Popular routes, volume by chain pair |
 | `GET` | `/stats/summary` | Aggregate stats across all protocols |
 | `GET` | `/health` | Service health check |
+| `GET` | `/historical/index` | List all archived periods in O3 |
+| `GET` | `/historical/messages` | Retrieve archived messages from O3 Parquet |
+| `GET` | `/metrics` | Prometheus metrics |
 
 ## Milestones
 
 - [x] **Milestone 1**: Project Scaffolding & Core Infrastructure ([#35](https://github.com/akave-ai/akave-pldg/issues/35))
 - [x] **Milestone 2**: First Protocol Decoder — LayerZero V2 ([#36](https://github.com/akave-ai/akave-pldg/issues/36))
-- [ ] **Milestone 3**: Multi-Protocol Expansion ([#37](https://github.com/akave-ai/akave-pldg/issues/37))
-- [ ] **Milestone 4**: REST API & Query Layer ([#38](https://github.com/akave-ai/akave-pldg/issues/38))
-- [ ] **Milestone 5**: Production Hardening & Documentation ([#39](https://github.com/akave-ai/akave-pldg/issues/39))
+- [x] **Milestone 3**: Multi-Protocol Expansion ([#37](https://github.com/akave-ai/akave-pldg/issues/37))
+- [x] **Milestone 4**: REST API & Query Layer ([#38](https://github.com/akave-ai/akave-pldg/issues/38))
+- [x] **Milestone 5**: Production Hardening & Documentation ([#39](https://github.com/akave-ai/akave-pldg/issues/39))
 
 > Tracker issue: [akave-ai/akave-pldg#34](https://github.com/akave-ai/akave-pldg/issues/34)
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture Overview](docs/architecture.md) | System design, data flow, component breakdown |
+| [Setup Guide](docs/setup-guide.md) | Prerequisites, configuration, running the services |
+| [API Reference](docs/api-reference.md) | All REST endpoints with request/response examples |
+| [Protocol Addition Guide](docs/protocol-addition-guide.md) | How to add a new bridge protocol decoder |
+| [Data Schema Reference](docs/data-schema-reference.md) | PostgreSQL tables, Parquet schema, migration history |
+
 ## Getting Started
 
-> Coming soon — see Milestone 1 for setup details.
-
 ```bash
-# Prerequisites
-# - Go 1.22+
-# - Docker & Docker Compose
-# - PostgreSQL 15+
+# Prerequisites: Go 1.22+, Docker & Docker Compose, PostgreSQL 15+
 
 # Clone the repo
 git clone https://github.com/Patrick-Ehimen/akave-crosschain-archive.git
@@ -135,6 +144,8 @@ make run-indexer
 # Start the API server
 make run-api
 ```
+
+See the [Setup Guide](docs/setup-guide.md) for full configuration options, backfill usage, and production deployment.
 
 ## References
 

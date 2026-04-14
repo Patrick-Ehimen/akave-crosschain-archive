@@ -9,13 +9,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/api"
-	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
-	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
-	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/api"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/archiver"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/config"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/logger"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/metrics"
+	akavestorage "github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
 )
 
 func main() {
@@ -35,7 +40,10 @@ func main() {
 	log := logger.New(cfg.Logging.Level, cfg.Logging.Pretty)
 	log.Info().Msg("Starting CrossChain Archive API")
 
-	// 3. Connect to DB
+	// 3. Register Prometheus metrics
+	metrics.Register()
+
+	// 4. Connect to DB
 	ctx := context.Background()
 	dbpool, err := postgres.NewPool(ctx, cfg.Database.DSN())
 	if err != nil {
@@ -80,6 +88,25 @@ func main() {
 	sq := api.NewPgStatsQuerier(dbpool)
 	r.Get("/protocols/{protocol}/stats", api.GetProtocolStatsHandler(sq))
 	r.Get("/routes/stats", api.GetRoutesStatsHandler(sq))
+
+	// Historical read-back from Akave O3 (registered only when credentials are set)
+	histStore := archiver.NewArchiveStore(dbpool)
+	if cfg.Akave.AccessKey != "" && cfg.Akave.SecretKey != "" {
+		o3Client, err := akavestorage.NewClient(ctx, cfg.Akave, log)
+		if err != nil {
+			log.Warn().Err(err).Msg("Akave O3 client init failed — historical endpoints disabled")
+		} else {
+			r.Get("/historical/index", api.GetHistoricalIndexHandler(histStore))
+			r.Get("/historical/messages", api.GetHistoricalMessagesHandler(histStore, o3Client))
+			log.Info().Msg("Historical O3 endpoints enabled")
+		}
+	} else {
+		r.Get("/historical/index", api.GetHistoricalIndexHandler(histStore))
+		log.Info().Msg("Akave credentials not set — /historical/messages disabled")
+	}
+
+	// Prometheus metrics
+	r.Get("/metrics", promhttp.Handler().ServeHTTP)
 
 	port := cfg.API.Port
 	if port == 0 {
