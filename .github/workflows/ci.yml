@@ -14,11 +14,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+          go-version-file: 'go.mod'
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run golangci-lint
+        run: golangci-lint run ./...
 
   unit-tests:
     name: Unit Tests
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: 'go.mod'
       - name: Run unit tests with coverage
         # Exclude cmd/* entrypoints and /tests/ (integration-only) from unit coverage.
         # DB-dependent packages (indexer, archiver) are tested in the integration step.
@@ -38,7 +38,9 @@ jobs:
         run: go tool cover -func=coverage.out | grep total
       - name: Check decoder coverage threshold (>85%)
         run: |
-          go test -coverprofile=decoder_coverage.out -covermode=atomic ./internal/decoder/...
+          # Only test the protocol sub-packages — the parent package (types/registry) has no tests by design
+          DECODER_PKGS=$(go list ./internal/decoder/... | grep -v 'internal/decoder$')
+          go test -coverprofile=decoder_coverage.out -covermode=atomic $DECODER_PKGS
           DECODER_COVERAGE=$(go tool cover -func=decoder_coverage.out | grep total | awk '{print $3}' | tr -d '%')
           echo "Decoder coverage: ${DECODER_COVERAGE}%"
           if (( $(echo "$DECODER_COVERAGE < 85" | bc -l) )); then
@@ -73,7 +75,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: 'go.mod'
       - name: Install migrate
         run: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
       - name: Run migrations
@@ -108,7 +110,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: 'go.mod'
       - name: Build binaries
         run: make build
       - name: Build Docker image
