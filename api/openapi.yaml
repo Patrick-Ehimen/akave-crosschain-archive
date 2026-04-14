@@ -1,0 +1,661 @@
+openapi: 3.0.3
+info:
+  title: CrossChain Archive API
+  description: |
+    REST API for querying unified cross-chain bridge messages across
+    LayerZero V2, Wormhole, Axelar, and CCIP protocols.
+  version: 1.0.0
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns database connectivity and indexer cursor state.
+      operationId: getHealth
+      tags: [System]
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Database unreachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /messages:
+    get:
+      summary: List messages
+      description: Returns a paginated, filterable list of cross-chain messages.
+      operationId: listMessages
+      tags: [Messages]
+      parameters:
+        - name: protocol
+          in: query
+          schema:
+            type: string
+            enum: [layerzero_v2, wormhole, axelar, ccip]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, executed, failed]
+        - name: src_chain
+          in: query
+          schema:
+            type: integer
+            format: uint64
+          description: Source chain EVM ID
+        - name: dst_chain
+          in: query
+          schema:
+            type: integer
+            format: uint64
+          description: Destination chain EVM ID
+        - name: sender
+          in: query
+          schema:
+            type: string
+          description: Sender address
+        - name: receiver
+          in: query
+          schema:
+            type: string
+          description: Receiver address
+        - name: from_ts
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp lower bound (seconds)
+        - name: to_ts
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp upper bound (seconds)
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque pagination token from a previous response
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        "200":
+          description: Paginated message list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagesListResponse"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /messages/{message_id}:
+    get:
+      summary: Get message by ID
+      description: Returns a single cross-chain message by its protocol-specific ID.
+      operationId: getMessageById
+      tags: [Messages]
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Message found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /transactions/{tx_hash}/messages:
+    get:
+      summary: Get messages by transaction hash
+      description: Returns all cross-chain messages associated with a source or destination transaction hash.
+      operationId: getMessagesByTxHash
+      tags: [Messages]
+      parameters:
+        - name: tx_hash
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Messages for the transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TxMessagesResponse"
+
+  /address/{address}/history:
+    get:
+      summary: Address history
+      description: |
+        Returns all messages where the address appears as sender or receiver,
+        with cursor-based pagination and optional filters.
+      operationId: getAddressHistory
+      tags: [Address]
+      parameters:
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: protocol
+          in: query
+          schema:
+            type: string
+            enum: [layerzero_v2, wormhole, axelar, ccip]
+        - name: src_chain
+          in: query
+          schema:
+            type: integer
+            format: uint64
+        - name: dst_chain
+          in: query
+          schema:
+            type: integer
+            format: uint64
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, executed, failed]
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        "200":
+          description: Address history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressHistoryResponse"
+        "400":
+          description: Invalid parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /trace/{message_id}:
+    get:
+      summary: Message trace
+      description: |
+        Returns the full end-to-end lifecycle for a message including
+        source and destination events, latency, payload, and metadata.
+      operationId: getTrace
+      tags: [Trace]
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full message trace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceResponse"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /protocols/{protocol}/stats:
+    get:
+      summary: Protocol statistics
+      description: |
+        Returns aggregate metrics for a single protocol including status
+        counts, success rate, and latency percentiles.
+      operationId: getProtocolStats
+      tags: [Analytics]
+      parameters:
+        - name: protocol
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [layerzero_v2, wormhole, axelar, ccip]
+        - name: from_ts
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp lower bound (seconds)
+        - name: to_ts
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp upper bound (seconds)
+      responses:
+        "200":
+          description: Protocol statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProtocolStats"
+        "404":
+          description: Unknown protocol
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /routes/stats:
+    get:
+      summary: Route statistics
+      description: |
+        Returns the top N source-to-destination chain pairs by message
+        volume with status counts, success rate, and average latency.
+      operationId: getRoutesStats
+      tags: [Analytics]
+      parameters:
+        - name: protocol
+          in: query
+          schema:
+            type: string
+            enum: [layerzero_v2, wormhole, axelar, ccip]
+        - name: from_ts
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: to_ts
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Route statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutesStatsResult"
+        "400":
+          description: Invalid parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    HealthResponse:
+      type: object
+      required: [status, database]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        database:
+          type: string
+          enum: [connected, disconnected]
+        indexer:
+          type: object
+          properties:
+            cursors:
+              type: array
+              items:
+                $ref: "#/components/schemas/CursorInfo"
+        error:
+          type: string
+
+    CursorInfo:
+      type: object
+      properties:
+        chain_id:
+          type: integer
+          format: int64
+        protocol:
+          type: string
+        last_block:
+          type: integer
+          format: int64
+        updated_at:
+          type: string
+          format: date-time
+
+    Source:
+      type: object
+      required: [chain_id, tx_hash, block_number, timestamp, sender, log_index]
+      properties:
+        chain_id:
+          type: integer
+          format: uint64
+        tx_hash:
+          type: string
+        block_number:
+          type: integer
+          format: uint64
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp (seconds)
+        sender:
+          type: string
+        log_index:
+          type: integer
+
+    Destination:
+      type: object
+      required: [chain_id, tx_hash, block_number, timestamp, receiver, log_index]
+      properties:
+        chain_id:
+          type: integer
+          format: uint64
+        tx_hash:
+          type: string
+        block_number:
+          type: integer
+          format: uint64
+        timestamp:
+          type: integer
+          format: int64
+        receiver:
+          type: string
+        log_index:
+          type: integer
+
+    Payload:
+      type: object
+      properties:
+        token:
+          type: string
+        amount:
+          type: string
+        data:
+          type: string
+        nonce:
+          type: integer
+          format: uint64
+
+    Metadata:
+      type: object
+      properties:
+        fee:
+          type: string
+        relayer:
+          type: string
+        gas_used:
+          type: integer
+          format: uint64
+        latency_seconds:
+          type: integer
+          format: int64
+
+    Message:
+      type: object
+      required: [message_id, protocol, type, status, source, created_at, updated_at]
+      properties:
+        message_id:
+          type: string
+        protocol:
+          type: string
+        type:
+          type: string
+          enum: [token_transfer, message, contract_call]
+        status:
+          type: string
+          enum: [pending, executed, failed]
+        source:
+          $ref: "#/components/schemas/Source"
+        destination:
+          $ref: "#/components/schemas/Destination"
+        payload:
+          $ref: "#/components/schemas/Payload"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MessagesListResponse:
+      type: object
+      required: [messages, count]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        next_cursor:
+          type: string
+        count:
+          type: integer
+
+    TxMessagesResponse:
+      type: object
+      required: [tx_hash, messages, count]
+      properties:
+        tx_hash:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        count:
+          type: integer
+
+    AddressHistoryResponse:
+      type: object
+      required: [address, messages, count]
+      properties:
+        address:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        count:
+          type: integer
+        next_cursor:
+          type: string
+
+    TraceEvent:
+      type: object
+      required: [type, chain_id, tx_hash, block_number, timestamp, log_index, address]
+      properties:
+        type:
+          type: string
+          enum: [sent, received]
+        chain_id:
+          type: integer
+          format: uint64
+        tx_hash:
+          type: string
+        block_number:
+          type: integer
+          format: uint64
+        timestamp:
+          type: integer
+          format: int64
+        log_index:
+          type: integer
+        address:
+          type: string
+
+    TraceResponse:
+      type: object
+      required: [message_id, protocol, type, status, events, created_at, updated_at]
+      properties:
+        message_id:
+          type: string
+        protocol:
+          type: string
+        type:
+          type: string
+          enum: [token_transfer, message, contract_call]
+        status:
+          type: string
+          enum: [pending, executed, failed]
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceEvent"
+        latency_seconds:
+          type: integer
+          format: int64
+        payload:
+          $ref: "#/components/schemas/Payload"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StatusBreakdown:
+      type: object
+      required: [executed, pending, failed, total]
+      properties:
+        executed:
+          type: integer
+          format: int64
+        pending:
+          type: integer
+          format: int64
+        failed:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+
+    ProtocolStats:
+      type: object
+      required: [protocol, counts, computed_at]
+      properties:
+        protocol:
+          type: string
+        counts:
+          $ref: "#/components/schemas/StatusBreakdown"
+        success_rate:
+          type: number
+          format: double
+        avg_latency_seconds:
+          type: number
+          format: double
+        p50_latency_seconds:
+          type: number
+          format: double
+        p95_latency_seconds:
+          type: number
+          format: double
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+        computed_at:
+          type: string
+          format: date-time
+
+    RouteStats:
+      type: object
+      required: [src_chain_id, dst_chain_id, counts]
+      properties:
+        src_chain_id:
+          type: integer
+          format: uint64
+        dst_chain_id:
+          type: integer
+          format: uint64
+        protocol:
+          type: string
+        counts:
+          $ref: "#/components/schemas/StatusBreakdown"
+        success_rate:
+          type: number
+          format: double
+        avg_latency_seconds:
+          type: number
+          format: double
+
+    RoutesStatsResult:
+      type: object
+      required: [routes, total_routes, computed_at]
+      properties:
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouteStats"
+        total_routes:
+          type: integer
+        computed_at:
+          type: string
+          format: date-time
