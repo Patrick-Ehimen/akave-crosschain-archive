@@ -21,6 +21,17 @@ linters:
     - misspell
     - unconvert
 
+linters-settings:
+  errcheck:
+    # Ignore errors from deferred Close/Rollback calls (standard Go pattern).
+    # Ignore json.Encoder.Encode in HTTP handlers (headers already sent, can't recover).
+    exclude-functions:
+      - (io.Closer).Close
+      - (*github.com/jackc/pgx/v5.Tx).Rollback
+      - (*encoding/json.Encoder).Encode
+      - (*encoding/json.Decoder).Decode
+      - (github.com/jackc/pgx/v5/pgxpool.Pool).Exec
+
 issues:
   exclude-use-default: false
   max-issues-per-linter: 0

@@ -21,16 +21,17 @@ type Manifest struct {
 
 // ManifestEntry describes a single archived Parquet file.
 type ManifestEntry struct {
-	ObjectKey   string    `json:"object_key"`
-	Protocol    string    `json:"protocol"`
-	ChainID     uint64    `json:"chain_id"`
-	ChainName   string    `json:"chain_name"`
-	YearMonth   string    `json:"year_month"`
-	RowCount    int64     `json:"row_count"`
-	FileSize    int64     `json:"file_size"`
-	MinTimestamp int64    `json:"min_timestamp"`
-	MaxTimestamp int64    `json:"max_timestamp"`
-	ArchivedAt  time.Time `json:"archived_at"`
+	ObjectKey    string    `json:"object_key"`
+	Protocol     string    `json:"protocol"`
+	ChainID      uint64    `json:"chain_id"`
+	ChainName    string    `json:"chain_name"`
+	YearMonth    string    `json:"year_month"`
+	RowCount     int64     `json:"row_count"`
+	FileSize     int64     `json:"file_size"`
+	Checksum     string    `json:"checksum"`
+	MinTimestamp int64     `json:"min_timestamp"`
+	MaxTimestamp int64     `json:"max_timestamp"`
+	ArchivedAt   time.Time `json:"archived_at"`
 }
 
 // BuildManifest creates a Manifest from archival records and a chain name resolver.
@@ -44,16 +45,17 @@ func BuildManifest(records []ArchivalRecord, chainNames map[uint64]string) *Mani
 			chainName = fmt.Sprintf("chain_%d", r.ChainID)
 		}
 		entries = append(entries, ManifestEntry{
-			ObjectKey:   r.ObjectKey,
-			Protocol:    r.Protocol,
-			ChainID:     r.ChainID,
-			ChainName:   chainName,
-			YearMonth:   r.YearMonth,
-			RowCount:    r.RowCount,
-			FileSize:    r.FileSize,
+			ObjectKey:    r.ObjectKey,
+			Protocol:     r.Protocol,
+			ChainID:      r.ChainID,
+			ChainName:    chainName,
+			YearMonth:    r.YearMonth,
+			RowCount:     r.RowCount,
+			FileSize:     r.FileSize,
+			Checksum:     r.Checksum,
 			MinTimestamp: r.MinTimestamp,
 			MaxTimestamp: r.MaxTimestamp,
-			ArchivedAt:  r.ArchivedAt,
+			ArchivedAt:   r.ArchivedAt,
 		})
 		totalRows += r.RowCount
 	}

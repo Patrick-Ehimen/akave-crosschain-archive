@@ -88,8 +88,8 @@ func TestLoad(t *testing.T) {
 	}
 
 	arb := cfg.Chains[42161]
-	if arb.RPCURL != "https://arb.example.com" {
-		t.Errorf("expected arb rpc url, got %s", arb.RPCURL)
+	if len(arb.RPCURLs) == 0 || arb.RPCURLs[0] != "https://arb.example.com" {
+		t.Errorf("expected arb rpc url https://arb.example.com, got %v", arb.RPCURLs)
 	}
 
 	if cfg.Akave.BucketName != "test-bucket" {

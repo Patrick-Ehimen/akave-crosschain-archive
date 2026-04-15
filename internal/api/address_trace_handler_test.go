@@ -69,8 +69,8 @@ func samplePendingMessage(id string) *types.Message {
 			Sender:      "0xSender1111111111111111111111111111111111",
 			LogIndex:    7,
 		},
-		Payload:  &types.Payload{Data: "0xdeadbeef"},
-		Metadata: &types.Metadata{},
+		Payload:   &types.Payload{Data: "0xdeadbeef"},
+		Metadata:  &types.Metadata{},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

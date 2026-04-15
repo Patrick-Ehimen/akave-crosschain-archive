@@ -3,11 +3,15 @@ package archiver
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
 
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/metrics"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/akave"
 )
 
@@ -148,15 +152,27 @@ func (a *Archiver) archiveChainProtocol(
 		objectKey := fmt.Sprintf("protocols/%s/%s/%s.parquet",
 			protocol, chainName, yearMonth)
 
-		// Serialize to Parquet
+		// Serialize to Parquet with Snappy compression
 		buf, err := WriteParquet(records)
 		if err != nil {
 			return count, fmt.Errorf("writing parquet for %s: %w", objectKey, err)
 		}
 
+		// Compute SHA-256 checksum before uploading
+		h := sha256.New()
+		if _, err := io.Copy(h, bytes.NewReader(buf.Bytes())); err != nil {
+			return count, fmt.Errorf("computing checksum for %s: %w", objectKey, err)
+		}
+		checksum := fmt.Sprintf("%x", h.Sum(nil))
+
 		// Upload to O3
 		if err := a.o3.Upload(ctx, objectKey, bytes.NewReader(buf.Bytes()), int64(buf.Len())); err != nil {
 			return count, fmt.Errorf("uploading %s: %w", objectKey, err)
+		}
+
+		// Verify round-trip: download and re-check checksum
+		if err := a.verifyUpload(ctx, objectKey, checksum, buf.Len()); err != nil {
+			a.log.Warn().Err(err).Str("object_key", objectKey).Msg("Checksum verification failed after upload")
 		}
 
 		// Compute min/max timestamps from records
@@ -172,22 +188,27 @@ func (a *Archiver) archiveChainProtocol(
 
 		// Record in archival_cursors
 		if err := a.store.UpsertArchivalCursor(ctx, &ArchivalRecord{
-			Protocol:    protocol,
-			ChainID:     chainID,
-			YearMonth:   yearMonth,
-			RowCount:    int64(len(records)),
+			Protocol:     protocol,
+			ChainID:      chainID,
+			YearMonth:    yearMonth,
+			RowCount:     int64(len(records)),
 			MinTimestamp: minTS,
 			MaxTimestamp: maxTS,
-			FileSize:    int64(buf.Len()),
-			ObjectKey:   objectKey,
+			FileSize:     int64(buf.Len()),
+			ObjectKey:    objectKey,
+			Checksum:     checksum,
 		}); err != nil {
 			return count, fmt.Errorf("recording archival cursor for %s: %w", objectKey, err)
 		}
+
+		chainIDStr := strconv.FormatUint(chainID, 10)
+		metrics.ArchivedFilesTotal.WithLabelValues(protocol, chainIDStr).Inc()
 
 		a.log.Info().
 			Str("object_key", objectKey).
 			Int("row_count", len(records)).
 			Int("file_size", buf.Len()).
+			Str("checksum", checksum).
 			Str("year_month", yearMonth).
 			Msg("Archived parquet file")
 
@@ -195,6 +216,29 @@ func (a *Archiver) archiveChainProtocol(
 	}
 
 	return count, nil
+}
+
+// verifyUpload downloads the object from O3 and confirms its SHA-256 checksum matches.
+func (a *Archiver) verifyUpload(ctx context.Context, objectKey, expectedChecksum string, expectedSize int) error {
+	obj, err := a.o3.Download(ctx, objectKey)
+	if err != nil {
+		return fmt.Errorf("downloading for verification: %w", err)
+	}
+	defer obj.Close()
+
+	h := sha256.New()
+	n, err := io.Copy(h, obj)
+	if err != nil {
+		return fmt.Errorf("reading for checksum: %w", err)
+	}
+	if int(n) != expectedSize {
+		return fmt.Errorf("size mismatch: got %d want %d", n, expectedSize)
+	}
+	got := fmt.Sprintf("%x", h.Sum(nil))
+	if got != expectedChecksum {
+		return fmt.Errorf("checksum mismatch: got %s want %s", got, expectedChecksum)
+	}
+	return nil
 }
 
 // updateManifest builds and uploads the manifest file to O3.

@@ -65,8 +65,7 @@ type MessageQuerier interface {
 	List(ctx context.Context, filter MessageFilter) (*MessageListResult, error)
 	GetByTxHash(ctx context.Context, txHash string) ([]*types.Message, error)
 	GetAddressHistory(ctx context.Context, address string, filter AddressHistoryFilter) (*MessageListResult, error)
-    GetTrace(ctx context.Context, messageID string) (*TraceResponse, error)
-
+	GetTrace(ctx context.Context, messageID string) (*TraceResponse, error)
 }
 
 // PgMessageQuerier implements MessageQuerier using PostgreSQL.
@@ -251,16 +250,16 @@ func (q *PgMessageQuerier) GetByTxHash(ctx context.Context, txHash string) ([]*t
 func scanFullMessage(row pgx.Row) (*types.Message, error) {
 	msg := &types.Message{}
 	var (
-		msgType, msgStatus             string
-		dstChainID, dstBlockNumber     *uint64
-		dstTxHash, dstReceiver         *string
-		dstTimestamp                    *int64
-		dstLogIndex                    *uint
-		payloadToken, payloadAmount    *string
-		payloadData                    *string
-		payloadNonce                   *uint64
-		metaFee, metaRelayer           *string
-		metaGasUsed, metaLatency       *int64
+		msgType, msgStatus          string
+		dstChainID, dstBlockNumber  *uint64
+		dstTxHash, dstReceiver      *string
+		dstTimestamp                *int64
+		dstLogIndex                 *uint
+		payloadToken, payloadAmount *string
+		payloadData                 *string
+		payloadNonce                *uint64
+		metaFee, metaRelayer        *string
+		metaGasUsed, metaLatency    *int64
 	)
 
 	err := row.Scan(
@@ -314,16 +313,16 @@ func scanFullMessage(row pgx.Row) (*types.Message, error) {
 func scanFullMessageFromRows(rows pgx.Rows) (*types.Message, error) {
 	msg := &types.Message{}
 	var (
-		msgType, msgStatus             string
-		dstChainID, dstBlockNumber     *uint64
-		dstTxHash, dstReceiver         *string
-		dstTimestamp                    *int64
-		dstLogIndex                    *uint
-		payloadToken, payloadAmount    *string
-		payloadData                    *string
-		payloadNonce                   *uint64
-		metaFee, metaRelayer           *string
-		metaGasUsed, metaLatency       *int64
+		msgType, msgStatus          string
+		dstChainID, dstBlockNumber  *uint64
+		dstTxHash, dstReceiver      *string
+		dstTimestamp                *int64
+		dstLogIndex                 *uint
+		payloadToken, payloadAmount *string
+		payloadData                 *string
+		payloadNonce                *uint64
+		metaFee, metaRelayer        *string
+		metaGasUsed, metaLatency    *int64
 	)
 
 	err := rows.Scan(

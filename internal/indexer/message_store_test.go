@@ -1,15 +1,14 @@
 package indexer
 
 import (
-    "context"
-    "testing"
-    "time"
+	"context"
+	"testing"
+	"time"
 
-    "github.com/Patrick-Ehimen/akave-crosschain-archive/internal/normalizer"
-    "github.com/Patrick-Ehimen/akave-crosschain-archive/internal/testhelper"
-    "github.com/Patrick-Ehimen/akave-crosschain-archive/internal/types"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/normalizer"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/testhelper"
+	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/types"
 )
-
 
 func newTestMessageStore(t *testing.T) *PostgresMessageStore {
 	t.Helper()

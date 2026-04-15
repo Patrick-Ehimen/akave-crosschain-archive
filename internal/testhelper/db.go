@@ -4,9 +4,9 @@ import (
 	"os"
 	"testing"
 
+	"context"
 	"github.com/Patrick-Ehimen/akave-crosschain-archive/internal/storage/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"context"
 )
 
 // TestDSN returns the PostgreSQL DSN for tests.

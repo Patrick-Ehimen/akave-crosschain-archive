@@ -17,16 +17,16 @@ import (
 
 // protocolTestCase defines a message fixture for one protocol.
 type protocolTestCase struct {
-	name      string
-	msgID     string
-	protocol  string
-	msgType   types.MessageType
-	chainID   uint64
-	sender    string
-	nonce     uint64
-	token     string
-	amount    string
-	fee       string
+	name     string
+	msgID    string
+	protocol string
+	msgType  types.MessageType
+	chainID  uint64
+	sender   string
+	nonce    uint64
+	token    string
+	amount   string
+	fee      string
 }
 
 var crossProtocolCases = []protocolTestCase{
@@ -242,7 +242,7 @@ func TestCrossProtocol_FindByCorrelationKey_MessageIDBased(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert Axelar and CCIP messages.
-	axlMsg := newCrossProtocolMessage(crossProtocolCases[2]) // Axelar
+	axlMsg := newCrossProtocolMessage(crossProtocolCases[2])  // Axelar
 	ccipMsg := newCrossProtocolMessage(crossProtocolCases[3]) // CCIP
 	t.Cleanup(func() {
 		cleanupMessage(t, store, axlMsg.MessageID)
